@@ -1,0 +1,23 @@
+[Unit]
+Description=Telegram Expense Tracking Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/telega_bot
+Environment="PATH=/home/ubuntu/telega_bot/venv/bin"
+ExecStart=/home/ubuntu/telega_bot/venv/bin/python bot.py
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/var/log/expense-bot/stdout.log
+StandardError=append:/var/log/expense-bot/stderr.log
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

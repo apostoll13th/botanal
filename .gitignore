@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+
+# Database
+expenses.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+expense_bot.log
+/var/log/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Bot specific
+.last_requirements_hash
+*.png
+*.jpg
+*.jpeg
+
+# Backups
+*.backup
+*.bak
+*_backup_*
