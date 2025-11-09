@@ -8,7 +8,7 @@
 |-----------|-----------------|------------------|
 | Go Backend API | `backend-go/main.go`, `backend-go/schema.go` | Единственный владелец схемы: создает таблицы, применяет миграции, отдает REST эндпоинты `/api/*`. |
 | Telegram Bot (Python) | `bot.py`, `database.py` | Работает с готовой схемой: ждет БД, читает/пишет данные команд, но не мигрирует таблицы. |
-| React Frontend (PWA) | `frontend-react/` | Компоненты `Overview/Expenses/Budgets/Goals/Expenses` визуализируют данные и теперь пишут их через API (категории, операции, профиль). |
+| React Frontend (PWA) | `frontend-react/` | Компоненты `Overview/Expenses/Budgets/Goals/Categories/Users` визуализируют данные и дают полный CRUD (операции, категории, аккаунты). |
 | PostgreSQL | `docker-compose.yml` (`db` сервис) | Хранит все таблицы (`users`, `app_users`, `expenses`, `budgets`, `savings_goals`, `reminders`, `categories`, `migrations`). |
 
 > Ключевой момент: **только Go backend владеет схемой БД**. Бот и UI работают поверх REST API и не содержат собственной логики миграций.
@@ -80,9 +80,17 @@ docker compose up --build        # старт всех сервисов
 | Сбор данных | UI/бот создают операции, категории и профили через REST (`POST /api/auth/login`, `/api/expenses`, `/api/categories`). | `frontend-react/src/components/Expenses.js`, `backend-go/main.go`. |
 | Подготовка данных | PostgreSQL + миграции из Go (`schema.go`). | Таблицы `expenses`, `categories`, `budgets`, `savings_goals`. |
 | Аналитика (API) | Go эндпоинты `getExpenses`, `getExpensesSummary`, `getBudgets`, `getSavingsGoals`. | `backend-go/main.go`. |
-| Визуализация | React компоненты `Overview`, `Expenses`, `Budgets`, `Goals`. | `frontend-react/src/components/*`. |
+| Визуализация | React компоненты `Overview`, `Expenses`, `Budgets`, `Goals`, `Categories`, `Users`. | `frontend-react/src/components/*`. |
 
 Все диаграммы, таблицы и карточки строятся на данных, отдаваемых Go API. Операции можно создавать прямо из раздела `Расходы` (поддерживаются типы `expense` и `income`), категории — из UI или через REST.
+
+### 5.1 Управление пользователями и категориями
+
+- **Категории:** отдельная вкладка показывает все категории по типам и позволяет добавлять новые (одновременно с этим они доступны в Telegram-боте). API: `GET/POST /api/categories`.
+- **Пользователи:** доступна только администраторам. Здесь можно создать логин/пароль, назначить роль и самое главное — привязать реальный `telegram_user_id`. Именно это значение использует и бот, и UI, поэтому данные синхронизированы. API: `GET/POST/PUT/DELETE /api/admin/users`.
+- После добавления пользователя он может:
+  1. Войти в веб-интерфейс под выданным логином.
+  2. Общаться с ботом Telegram (ID уже есть в таблице `users` благодаря `ensureUserRecord`).
 
 ## 6. Локальная разработка без Docker
 

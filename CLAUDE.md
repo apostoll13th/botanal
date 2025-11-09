@@ -57,7 +57,7 @@ cd backend-go && go mod download
   - go.mod: Go dependencies
 - **backend/**: Legacy Flask API (deprecated, use Go version)
 - **frontend-react/**: React 18 UI (PWA)
-  - src/components: Overview/Expenses/Budgets/Goals
+  - src/components: Overview/Expenses/Budgets/Goals/Categories/Users
   - src/services/api.js: Axios client (`/api/*`)
   - nginx.conf: Nginx configuration for production build
 
@@ -89,7 +89,7 @@ cd backend-go && go mod download
 4. **Reports**: Generate daily/weekly/monthly reports with charts
 5. **Reminders**: Set recurring reminders
 6. **Multi-user**: Supports multiple users with username tracking
-7. **PWA UI**: Добавление расходов/доходов и управление категориями через React UI
+7. **PWA UI**: Добавление расходов/доходов, управление категориями и администрирование пользователей
 
 ### Conversation Flows
 - EXPENSE_ENTRY: Multi-step expense addition
@@ -173,5 +173,9 @@ Currently no tests exist. When adding tests:
 | `GET`  | `/api/goals` | Цели экономии. |
 | `GET`  | `/api/categories` | Получить справочник категорий. |
 | `POST` | `/api/categories` | Создать/обновить категорию. |
+| `GET`  | `/api/admin/users` | Список UI-аккаунтов (admin). |
+| `POST` | `/api/admin/users` | Создать нового пользователя (логин/роль/Telegram ID). |
+| `PUT`  | `/api/admin/users/:id` | Обновить пользователя. |
+| `DELETE` | `/api/admin/users/:id` | Удалить пользователя. |
 
 Backend автоматически приводит схему в порядок при старте (см. `schema.go`), поэтому при любых изменениях БД достаточно перезапустить сервис `backend`. Токены подписываются HMAC (секрет `AUTH_SECRET`), UI хранит их в `localStorage` и отправляет в `Authorization: Bearer ...`.

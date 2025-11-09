@@ -66,6 +66,16 @@
   background: #e0e0e0;
 }
 
+.btn-danger {
+  background: #f87171;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
 .table-container {
   overflow-x: auto;
 }

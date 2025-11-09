@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,23 @@ var (
 	db        *sql.DB
 	jwtSecret []byte
 )
+
+var defaultAppUserSeeds = []appUserRequest{
+	{
+		Login:          "admin",
+		Password:       "adminStrongPass!",
+		FullName:       "Администратор",
+		Role:           "admin",
+		TelegramUserID: 101010,
+	},
+	{
+		Login:          "analyst",
+		Password:       "analystGo#2024",
+		FullName:       "Финансовый аналитик",
+		Role:           "analyst",
+		TelegramUserID: 202020,
+	},
+}
 
 // Database models
 type Expense struct {
@@ -135,6 +153,30 @@ type loginResponse struct {
 	User  any    `json:"user"`
 }
 
+type appUserRequest struct {
+	Login          string `json:"login" binding:"required"`
+	Password       string `json:"password"`
+	FullName       string `json:"full_name"`
+	Role           string `json:"role" binding:"required"`
+	TelegramUserID int64  `json:"telegram_user_id" binding:"required"`
+}
+
+type appUserResponse struct {
+	ID             int     `json:"id"`
+	Login          string  `json:"login"`
+	FullName       *string `json:"full_name,omitempty"`
+	Role           string  `json:"role"`
+	TelegramUserID int64   `json:"telegram_user_id"`
+}
+
+type appUserUpdateRequest struct {
+	Login          *string `json:"login"`
+	Password       *string `json:"password"`
+	FullName       *string `json:"full_name"`
+	Role           *string `json:"role"`
+	TelegramUserID *int64  `json:"telegram_user_id"`
+}
+
 // Initialize database connection
 func initDB() {
 	var err error
@@ -152,6 +194,9 @@ func initDB() {
 				if schemaErr := ensureSchema(db); schemaErr != nil {
 					log.Printf("⚠️  Schema initialization error: %v", schemaErr)
 				} else {
+					if seedErr := seedDefaultAppUsers(); seedErr != nil {
+						log.Printf("⚠️  Cannot seed default users: %v", seedErr)
+					}
 					log.Println("✅ Database schema ready")
 					return
 				}
@@ -578,6 +623,15 @@ func getTelegramUserID(c *gin.Context) int64 {
 	return 0
 }
 
+func requireAdminRole(c *gin.Context) {
+	role := c.GetString("app_user_role")
+	if role != "admin" {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Недостаточно прав"})
+		return
+	}
+	c.Next()
+}
+
 func getAppUserByLogin(login string) (*AppUser, error) {
 	var (
 		user     AppUser
@@ -622,6 +676,201 @@ func generateToken(user AppUser) (string, error) {
 	encodedSignature := base64.RawURLEncoding.EncodeToString(signature)
 
 	return fmt.Sprintf("%s.%s", encodedPayload, encodedSignature), nil
+}
+
+func listAppUsersHandler(c *gin.Context) {
+	rows, err := db.Query(`
+		SELECT id, login, full_name, role, telegram_user_id
+		FROM app_users
+		ORDER BY id
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var users []appUserResponse
+	for rows.Next() {
+		var (
+			u       appUserResponse
+			fullRaw sql.NullString
+		)
+		if err := rows.Scan(&u.ID, &u.Login, &fullRaw, &u.Role, &u.TelegramUserID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if fullRaw.Valid {
+			full := fullRaw.String
+			u.FullName = &full
+		}
+		users = append(users, u)
+	}
+
+	if users == nil {
+		users = []appUserResponse{}
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+func createAppUserHandler(c *gin.Context) {
+	var req appUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(req.Password) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль обязателен"})
+		return
+	}
+	if err := validateRole(req.Role); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := insertAppUser(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key value") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Логин уже существует"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, appUserToResponse(*user))
+}
+
+func updateAppUserHandler(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный идентификатор"})
+		return
+	}
+
+	existing, err := getAppUserByID(id)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь не найден"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req appUserUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	login := existing.Login
+	if req.Login != nil && strings.TrimSpace(*req.Login) != "" {
+		login = strings.TrimSpace(*req.Login)
+	}
+
+	role := existing.Role
+	if req.Role != nil && strings.TrimSpace(*req.Role) != "" {
+		role = strings.TrimSpace(*req.Role)
+	}
+	if err := validateRole(role); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	passwordHash := existing.PasswordHash
+	if req.Password != nil && strings.TrimSpace(*req.Password) != "" {
+		passwordHash, err = hashPassword(*req.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	fullName := existing.FullName
+	if req.FullName != nil {
+		if strings.TrimSpace(*req.FullName) == "" {
+			fullName = nil
+		} else {
+			value := strings.TrimSpace(*req.FullName)
+			fullName = &value
+		}
+	}
+
+	telegramID := existing.TelegramUserID
+	if req.TelegramUserID != nil && *req.TelegramUserID != 0 {
+		telegramID = *req.TelegramUserID
+	}
+
+	_, err = db.Exec(`
+		UPDATE app_users
+		SET login = $1,
+		    password_hash = $2,
+		    full_name = NULLIF($3, ''),
+		    role = $4,
+		    telegram_user_id = $5
+		WHERE id = $6
+	`, login, passwordHash, nullableStringValue(fullName), role, telegramID, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key value") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Логин уже существует"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ensureUserRecord(telegramID, nullableStringValue(fullName)); err != nil {
+		log.Printf("warning: couldn't sync users table: %v", err)
+	}
+
+	updated := AppUser{
+		ID:             id,
+		Login:          login,
+		PasswordHash:   passwordHash,
+		FullName:       fullName,
+		Role:           role,
+		TelegramUserID: telegramID,
+	}
+
+	c.JSON(http.StatusOK, appUserToResponse(updated))
+}
+
+func deleteAppUserHandler(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный идентификатор"})
+		return
+	}
+
+	if _, err := db.Exec(`DELETE FROM app_users WHERE id = $1`, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func appUserToResponse(user AppUser) appUserResponse {
+	resp := appUserResponse{
+		ID:             user.ID,
+		Login:          user.Login,
+		Role:           user.Role,
+		TelegramUserID: user.TelegramUserID,
+	}
+	if user.FullName != nil {
+		resp.FullName = user.FullName
+	}
+	return resp
+}
+
+func hashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 // List categories
@@ -819,6 +1068,98 @@ func nullableString(value string) *string {
 	return &value
 }
 
+func nullableStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func validateRole(role string) error {
+	switch role {
+	case "admin", "analyst":
+		return nil
+	default:
+		return errors.New("Некорректная роль (поддерживаются admin, analyst)")
+	}
+}
+
+func insertAppUser(req appUserRequest) (*AppUser, error) {
+	login := strings.TrimSpace(req.Login)
+	role := strings.TrimSpace(req.Role)
+	if err := validateRole(role); err != nil {
+		return nil, err
+	}
+	passwordHash, err := hashPassword(req.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	fullName := strings.TrimSpace(req.FullName)
+	var fullPtr *string
+	if fullName != "" {
+		fullPtr = &fullName
+	}
+
+	var id int
+	err = db.QueryRow(`
+		INSERT INTO app_users (login, password_hash, full_name, role, telegram_user_id)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5)
+		RETURNING id
+	`, login, passwordHash, fullName, role, req.TelegramUserID).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ensureUserRecord(req.TelegramUserID, fullName); err != nil {
+		return nil, err
+	}
+
+	return &AppUser{
+		ID:             id,
+		Login:          login,
+		PasswordHash:   passwordHash,
+		FullName:       fullPtr,
+		Role:           role,
+		TelegramUserID: req.TelegramUserID,
+	}, nil
+}
+
+func getAppUserByID(id int) (*AppUser, error) {
+	var (
+		user    AppUser
+		fullRaw sql.NullString
+	)
+	err := db.QueryRow(`
+		SELECT id, login, password_hash, full_name, role, telegram_user_id
+		FROM app_users
+		WHERE id = $1
+	`, id).Scan(&user.ID, &user.Login, &user.PasswordHash, &fullRaw, &user.Role, &user.TelegramUserID)
+	if err != nil {
+		return nil, err
+	}
+	if fullRaw.Valid {
+		value := fullRaw.String
+		user.FullName = &value
+	}
+	return &user, nil
+}
+
+func seedDefaultAppUsers() error {
+	for _, seed := range defaultAppUserSeeds {
+		_, err := getAppUserByLogin(seed.Login)
+		if err == sql.ErrNoRows {
+			if _, err := insertAppUser(seed); err != nil {
+				return err
+			}
+			continue
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func main() {
 	// Load .env file if exists
 	godotenv.Load()
@@ -865,6 +1206,15 @@ func main() {
 		api.POST("/categories", createCategory)
 		api.POST("/expenses", createExpense)
 		api.POST("/users", createOrUpdateUser)
+	}
+
+	admin := api.Group("/admin")
+	admin.Use(requireAdminRole)
+	{
+		admin.GET("/users", listAppUsersHandler)
+		admin.POST("/users", createAppUserHandler)
+		admin.PUT("/users/:id", updateAppUserHandler)
+		admin.DELETE("/users/:id", deleteAppUserHandler)
 	}
 
 	// Start server

@@ -190,6 +190,16 @@
   margin: 1rem 0;
 }
 
+.muted {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 @media (max-width: 768px) {
   .header {
     flex-direction: column;

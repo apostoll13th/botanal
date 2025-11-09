@@ -11,6 +11,8 @@ import Overview from './components/Overview';
 import Expenses from './components/Expenses';
 import Budgets from './components/Budgets';
 import Goals from './components/Goals';
+import Categories from './components/Categories';
+import Users from './components/Users';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -116,6 +118,10 @@ function App() {
         return <Budgets />;
       case 'goals':
         return <Goals />;
+      case 'categories':
+        return <Categories />;
+      case 'users':
+        return <Users currentUser={authUser} />;
       default:
         return <Overview />;
     }
@@ -171,6 +177,20 @@ function App() {
           >
             Цели
           </button>
+          <button
+            className={`tab-button ${activeTab === 'categories' ? 'active' : ''}`}
+            onClick={() => setActiveTab('categories')}
+          >
+            Категории
+          </button>
+          {authUser && authUser.role === 'admin' && (
+            <button
+              className={`tab-button ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              Пользователи
+            </button>
+          )}
         </nav>
       )}
 

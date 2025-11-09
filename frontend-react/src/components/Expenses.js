@@ -27,13 +27,7 @@ const Expenses = () => {
     description: '',
     transactionType: 'expense',
   });
-  const [categoryForm, setCategoryForm] = useState({
-    name: '',
-    type: 'expense',
-    description: '',
-  });
   const [savingTransaction, setSavingTransaction] = useState(false);
-  const [savingCategory, setSavingCategory] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
@@ -145,44 +139,6 @@ const Expenses = () => {
       console.error('Error creating transaction:', err);
     } finally {
       setSavingTransaction(false);
-    }
-  };
-
-  const handleCategoryChange = (e) => {
-    const { name, value } = e.target;
-    setCategoryForm(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleCreateCategory = async (e) => {
-    e.preventDefault();
-    if (!categoryForm.name) {
-      setError('Введите название категории');
-      return;
-    }
-
-    try {
-      setSavingCategory(true);
-      setError(null);
-      await apiCreateCategory({
-        name: categoryForm.name,
-        type: categoryForm.type,
-        description: categoryForm.description,
-      });
-      setCategoryForm({
-        name: '',
-        type: categoryForm.type,
-        description: '',
-      });
-      await loadCategories();
-      setSuccessMessage('Категория сохранена');
-    } catch (err) {
-      setError('Не удалось сохранить категорию: ' + err.message);
-      console.error('Error creating category:', err);
-    } finally {
-      setSavingCategory(false);
     }
   };
 
@@ -344,48 +300,6 @@ const Expenses = () => {
           <div className="form-row">
             <button className="btn btn-primary" type="submit" disabled={savingTransaction}>
               {savingTransaction ? 'Сохранение...' : 'Добавить'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div className="card">
-        <h3>Категории</h3>
-        <form className="category-form" onSubmit={handleCreateCategory}>
-          <div className="form-row">
-            <label>Название:</label>
-            <input
-              type="text"
-              name="name"
-              value={categoryForm.name}
-              onChange={handleCategoryChange}
-              placeholder="Например, Продукты"
-            />
-          </div>
-          <div className="form-row">
-            <label>Тип:</label>
-            <select
-              name="type"
-              value={categoryForm.type}
-              onChange={handleCategoryChange}
-            >
-              <option value="expense">Расход</option>
-              <option value="income">Доход</option>
-            </select>
-          </div>
-          <div className="form-row">
-            <label>Описание:</label>
-            <input
-              type="text"
-              name="description"
-              value={categoryForm.description}
-              onChange={handleCategoryChange}
-              placeholder="Короткое описание"
-            />
-          </div>
-          <div className="form-row">
-            <button className="btn btn-secondary" type="submit" disabled={savingCategory}>
-              {savingCategory ? 'Сохранение...' : 'Добавить категорию'}
             </button>
           </div>
         </form>

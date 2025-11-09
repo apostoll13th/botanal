@@ -83,4 +83,23 @@ export const createCategory = async (payload) => {
   return response.data;
 };
 
+export const getAppUsers = async () => {
+  const response = await api.get('/admin/users');
+  return response.data;
+};
+
+export const createAppUser = async (payload) => {
+  const response = await api.post('/admin/users', payload);
+  return response.data;
+};
+
+export const updateAppUser = async (id, payload) => {
+  const response = await api.put(`/admin/users/${id}`, payload);
+  return response.data;
+};
+
+export const deleteAppUser = async (id) => {
+  await api.delete(`/admin/users/${id}`);
+};
+
 export default api;
