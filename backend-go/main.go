@@ -177,6 +177,20 @@ type appUserUpdateRequest struct {
 	TelegramUserID *int64  `json:"telegram_user_id"`
 }
 
+type createBudgetRequest struct {
+	Category string  `json:"category" binding:"required"`
+	Amount   float64 `json:"amount" binding:"required"`
+	Period   string  `json:"period" binding:"required"`
+}
+
+type createGoalRequest struct {
+	Name          string  `json:"name" binding:"required"`
+	Description   string  `json:"description"`
+	TargetAmount  float64 `json:"target_amount" binding:"required"`
+	TargetDate    string  `json:"target_date"`
+	CurrentAmount float64 `json:"current_amount"`
+}
+
 // Initialize database connection
 func initDB() {
 	var err error
@@ -432,6 +446,72 @@ func getBudgets(c *gin.Context) {
 	c.JSON(http.StatusOK, budgets)
 }
 
+func createBudgetHandler(c *gin.Context) {
+	var req createBudgetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Amount must be greater than zero"})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не удалось определить пользователя"})
+		return
+	}
+
+	period := normalizeBudgetPeriod(req.Period)
+	if period == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный период (daily/weekly/monthly)"})
+		return
+	}
+
+	startDate := time.Now().Format("2006-01-02")
+
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	defer tx.Rollback()
+
+	var budgetID int
+	err = tx.QueryRow(`
+		SELECT id FROM budgets
+		WHERE user_id = $1 AND category = $2 AND period = $3
+	`, userID, req.Category, period).Scan(&budgetID)
+
+	if err == sql.ErrNoRows {
+		_, err = tx.Exec(`
+			INSERT INTO budgets (user_id, category, amount, period, start_date)
+			VALUES ($1, $2, $3, $4, $5)
+		`, userID, req.Category, req.Amount, period, startDate)
+	} else if err == nil {
+		_, err = tx.Exec(`
+			UPDATE budgets
+			SET amount = $1, start_date = $2
+			WHERE id = $3
+		`, req.Amount, startDate, budgetID)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
 // Get savings goals for a user
 func getSavingsGoals(c *gin.Context) {
 	userID := getTelegramUserID(c)
@@ -471,6 +551,60 @@ func getSavingsGoals(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, goals)
+}
+
+func createSavingsGoalHandler(c *gin.Context) {
+	var req createGoalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.TargetAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Target amount must be greater than zero"})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не удалось определить пользователя"})
+		return
+	}
+
+	if err := ensureUserRecord(userID, req.Name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var userName string
+	err := db.QueryRow(`SELECT user_name FROM users WHERE user_id = $1`, userID).Scan(&userName)
+	if err != nil && err != sql.ErrNoRows {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if userName == "" {
+		userName = "Пользователь"
+	}
+
+	var targetDate sql.NullString
+	if strings.TrimSpace(req.TargetDate) != "" {
+		targetDate.Valid = true
+		targetDate.String = req.TargetDate
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO savings_goals (
+			user_id, description, target_amount, current_amount,
+			target_date, created_date, goal_name, user_name
+		) VALUES ($1, NULLIF($2, ''), $3, $4, $5, CURRENT_DATE, $6, $7)
+	`, userID, req.Description, req.TargetAmount, req.CurrentAmount, targetDate, req.Name, userName)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusCreated)
 }
 
 // Get user info
@@ -1084,6 +1218,19 @@ func validateRole(role string) error {
 	}
 }
 
+func normalizeBudgetPeriod(period string) string {
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "daily", "day", "день", "дневной":
+		return "daily"
+	case "weekly", "week", "неделя", "недельный":
+		return "weekly"
+	case "monthly", "month", "месяц", "месячный":
+		return "monthly"
+	default:
+		return ""
+	}
+}
+
 func insertAppUser(req appUserRequest) (*AppUser, error) {
 	login := strings.TrimSpace(req.Login)
 	role := strings.TrimSpace(req.Role)
@@ -1201,7 +1348,9 @@ func main() {
 		api.GET("/expenses", getExpenses)
 		api.GET("/expenses-summary", getExpensesSummary)
 		api.GET("/budgets", getBudgets)
+		api.POST("/budgets", createBudgetHandler)
 		api.GET("/goals", getSavingsGoals)
+		api.POST("/goals", createSavingsGoalHandler)
 		api.GET("/categories", listCategories)
 		api.POST("/categories", createCategory)
 		api.POST("/expenses", createExpense)

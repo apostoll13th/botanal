@@ -63,8 +63,18 @@ export const getBudgets = async () => {
   return response.data;
 };
 
+export const createBudget = async (payload) => {
+  const response = await api.post('/budgets', payload);
+  return response.data;
+};
+
 export const getSavingsGoals = async () => {
   const response = await api.get('/goals');
+  return response.data;
+};
+
+export const createGoal = async (payload) => {
+  const response = await api.post('/goals', payload);
   return response.data;
 };
 
