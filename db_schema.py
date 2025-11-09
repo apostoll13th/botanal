@@ -1,11 +1,15 @@
 import logging
 from db import get_db_connection
 
+logger = logging.getLogger(__name__)
+
 
 def init_db():
+    """Initialize database schema with all required tables"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    logger.info("Creating expenses table if not exists...")
     cursor.execute(
         '''
         CREATE TABLE IF NOT EXISTS expenses (
@@ -20,6 +24,7 @@ def init_db():
         '''
     )
 
+    logger.info("Creating budgets table if not exists...")
     cursor.execute(
         '''
         CREATE TABLE IF NOT EXISTS budgets (
@@ -34,6 +39,7 @@ def init_db():
         '''
     )
 
+    logger.info("Creating savings_goals table if not exists...")
     cursor.execute(
         '''
         CREATE TABLE IF NOT EXISTS savings_goals (
@@ -50,6 +56,7 @@ def init_db():
         '''
     )
 
+    logger.info("Creating reminders table if not exists...")
     cursor.execute(
         '''
         CREATE TABLE IF NOT EXISTS reminders (
@@ -63,6 +70,7 @@ def init_db():
         '''
     )
 
+    logger.info("Creating users table if not exists...")
     cursor.execute(
         '''
         CREATE TABLE IF NOT EXISTS users (
@@ -75,9 +83,12 @@ def init_db():
 
     conn.commit()
     conn.close()
+    logger.info("Database schema initialization completed")
 
 
 def update_database_structure():
+    """Legacy method to update database structure (use migrations instead)"""
+    logger.info("Running legacy database structure update...")
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -90,7 +101,7 @@ def update_database_structure():
             (table, column),
         )
         if cursor.fetchone() is None:
-            logging.info("Добавление колонки %s в таблицу %s", column, table)
+            logger.info("Adding column %s to table %s", column, table)
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
     try:
@@ -100,5 +111,10 @@ def update_database_structure():
         ensure_column("savings_goals", "user_name", "TEXT")
         ensure_column("savings_goals", "goal_name", "TEXT")
         conn.commit()
+        logger.info("Legacy database structure update completed")
+    except Exception as e:
+        logger.error(f"Error updating database structure: {e}")
+        conn.rollback()
+        raise
     finally:
         conn.close()

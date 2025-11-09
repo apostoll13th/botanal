@@ -19,44 +19,56 @@ export TELEGRAM_BOT_TOKEN="your_bot_token_here"
 python bot.py
 ```
 
-### Running the Web Interface
+### Running with Docker Compose
 ```bash
-# Quick start (runs db + backend + frontend)
+# Full stack (database + bot + Go backend + frontend)
 docker compose up --build
 
-# Или только веб-часть (поднимет backend, frontend и их зависимости)
-./start_web_interface.sh
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
 ```
 
-### Dependencies Installation
+### Dependencies Installation (for local development)
 ```bash
 # Bot dependencies
-pip install python-telegram-bot matplotlib pandas python-dotenv
+pip install -r requirements.txt
 
-# Web interface backend
-cd backend && pip install -r requirements.txt
+# Go backend dependencies
+cd backend-go && go mod download
+
+# Frontend - no dependencies (pure HTML/JS/CSS served by Nginx)
 ```
 
 ## Architecture Overview
 
 ### Project Structure
-- **bot.py** (1,150+ lines): Main Telegram bot functionality
-- **backend/**: Flask API for web interface
-  - app.py: REST API endpoints
-  - requirements.txt: Flask dependencies
+- **bot.py**: Main Telegram bot (refactored into modules)
+- **handlers.py**: Bot command and conversation handlers
+- **database.py**: Database operations
+- **utils.py**: Helper functions and chart generation
+- **config.py**: Configuration management
+- **db.py, db_schema.py, database_migrations.py**: Database layer
+- **backend-go/**: Go REST API for web interface
+  - main.go: API server with Gin framework
+  - go.mod: Go dependencies
+- **backend/**: Legacy Flask API (deprecated, use Go version)
 - **frontend/**: Web interface (HTML/JS/CSS)
   - index.html: Main page with tabs
   - app.js: JavaScript logic and API calls
   - styles.css: Responsive styling
-- **database_migrations.py**: Database migration system
+  - nginx.conf: Nginx configuration
 
-### Current Bot Structure (Monolithic)
-- **bot.py**: Contains all functionality including:
-  - Database operations (PostgreSQL via psycopg2)
-  - Telegram handlers and conversations
-  - Chart generation with matplotlib
-  - User management and authentication
-  - Scheduled tasks and reminders
+### Current Bot Structure (Refactored)
+- **bot.py**: Main entry point and orchestration (161 lines)
+- **handlers.py**: All command and conversation handlers
+- **database.py**: Database operations layer
+- **utils.py**: Helper functions and chart generation with matplotlib
+- **config.py**: Centralized configuration management
+- **db.py, db_schema.py**: Database connection and schema
+- **database_migrations.py**: Proper migration system
 
 ### Database Schema
 - **expenses**: Tracks user expenses (id, user_id, category, amount, date, description, user_name)
@@ -79,20 +91,22 @@ cd backend && pip install -r requirements.txt
 - GOAL_CREATION: Savings goal setup
 - REMINDER_CREATION: Reminder configuration
 
-## Important Refactoring Needs
+## ✅ Completed Refactoring
 
-### Before Ubuntu Deployment
-1. **Create requirements.txt** with proper versions
-2. **Split bot.py** into modules:
+### What's Been Done
+1. ✅ **Created requirements.txt** with proper versions
+2. ✅ **Split bot.py** into modules:
    - handlers.py: Command and conversation handlers
    - database.py: Database operations
    - utils.py: Helper functions and chart generation
    - config.py: Configuration management
-3. **Add .env.example** file for configuration
-4. **Implement proper database migrations** (currently uses try/catch)
-5. **Add logging** throughout the application
-6. **Create systemd service** for Ubuntu deployment
-7. **Add error handling** for network issues and database locks
+3. ✅ **Added .env.example** file for configuration
+4. ✅ **Implemented proper database migrations** system
+5. ✅ **Added logging** throughout all modules
+6. ✅ **Created Docker infrastructure** for deployment
+7. ✅ **Added error handling** in database and API layers
+8. ✅ **Created Go backend** for REST API (Gin framework)
+9. ✅ **Created React frontend** for web interface
 
 ### Database Migration Issues
 The code handles missing columns by catching exceptions and adding them dynamically. This should be replaced with proper migration system.

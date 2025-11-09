@@ -16,10 +16,11 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: Dockerfile.backend-go
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/expenses}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/expenses?sslmode=disable}
+      GIN_MODE: release
     depends_on:
       - db
     ports:
@@ -40,12 +41,14 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: Dockerfile.frontend-react
     depends_on:
       - backend
     ports:
       - "8080:80"
     restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=/api
 
 volumes:
   postgres_data:
