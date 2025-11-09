@@ -18,16 +18,17 @@ from utils import setup_logging
 
 # Import all handlers
 from handlers import (
-    start, web_interface,
+    start,
     add_expense_start, create_expense_handler,
     daily_report, weekly_report, monthly_report, detailed_monthly_report,
     set_budget_start, budget_amount, budget_category, save_budget, show_budgets,
     savings_goal_start, savings_description, savings_amount, show_savings_goals,
     process_savings_callback,
-    set_reminder_start, show_reminders, process_reminder_callback,
-    set_username, reset_portal_password, handle_general_messages,
+    set_reminder_start, process_reminder_callback,
+    reset_portal_password, handle_general_messages,
     send_daily_reports, check_reminders,
-    category_callback
+    category_callback,
+    show_recent_expenses, process_delete_expense_callback
 )
 
 # Setup logging
@@ -64,7 +65,6 @@ def setup_handlers(application: Application) -> None:
 
     # Добавление обработчиков команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("web", web_interface))
     application.add_handler(CommandHandler("daily_report", daily_report))
     application.add_handler(CommandHandler("weekly_report", weekly_report))
     application.add_handler(CommandHandler("monthly_report", monthly_report))
@@ -73,13 +73,13 @@ def setup_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("add_savings_goal", savings_goal_start))
     application.add_handler(CommandHandler("savings_goals", show_savings_goals))
     application.add_handler(CommandHandler("set_reminder", set_reminder_start))
-    application.add_handler(CommandHandler("my_reminders", show_reminders))
-    application.add_handler(CommandHandler("setname", set_username))
     application.add_handler(CommandHandler("reset_password", reset_portal_password))
+    application.add_handler(CommandHandler("delete_last", show_recent_expenses))
 
     # Обработчики для inline кнопок
     application.add_handler(CallbackQueryHandler(process_savings_callback, pattern="^add_to_goal_"))
     application.add_handler(CallbackQueryHandler(process_reminder_callback, pattern="^del_reminder_"))
+    application.add_handler(CallbackQueryHandler(process_delete_expense_callback, pattern="^del_expense_"))
     application.add_handler(CallbackQueryHandler(category_callback, pattern="^category_"))
 
     # Обработчики для conversation flows

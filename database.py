@@ -51,6 +51,62 @@ def add_expense(user_id: int, amount: float, category: str) -> None:
         conn.close()
 
 
+def get_recent_expenses(user_id: int, limit: int = 5) -> List[Dict]:
+    """Get recent expenses for a user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            '''SELECT id, amount, category, date, description, transaction_type
+               FROM expenses
+               WHERE user_id = %s
+               ORDER BY date DESC, id DESC
+               LIMIT %s''',
+            (user_id, limit)
+        )
+        results = cursor.fetchall()
+        return results
+    except Exception as e:
+        logger.error(f"Error getting recent expenses: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_expense(user_id: int, expense_id: int) -> bool:
+    """Delete an expense by ID"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Проверяем, что операция принадлежит пользователю
+        cursor.execute(
+            'SELECT user_id FROM expenses WHERE id = %s',
+            (expense_id,)
+        )
+        result = cursor.fetchone()
+
+        if not result:
+            logger.warning(f"Expense {expense_id} not found")
+            return False
+
+        if result['user_id'] != user_id:
+            logger.warning(f"User {user_id} trying to delete expense {expense_id} of another user")
+            return False
+
+        cursor.execute('DELETE FROM expenses WHERE id = %s', (expense_id,))
+        conn.commit()
+        logger.info(f"Expense deleted: id={expense_id}, user_id={user_id}")
+        return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error deleting expense: {e}")
+        raise
+    finally:
+        conn.close()
+
+
 def get_daily_expenses(user_id: int) -> Tuple[List[Dict], float]:
     """Get today's expenses for a user"""
     conn = get_db_connection()
@@ -471,15 +527,6 @@ def save_user(user_id: int, user_name: str) -> None:
     cursor = conn.cursor()
 
     try:
-        # Создаем таблицу пользователей, если она не существует
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            user_name TEXT NOT NULL,
-            created_date DATE NOT NULL
-        )
-        ''')
-
         # Проверяем, существует ли уже запись для этого пользователя
         cursor.execute('SELECT user_id FROM users WHERE user_id = %s', (user_id,))
         exists = cursor.fetchone()

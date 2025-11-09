@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   getExpenses,
   createTransaction,
+  deleteExpense,
   listCategories,
   createCategory as apiCreateCategory,
 } from '../services/api';
@@ -139,6 +140,22 @@ const Expenses = () => {
       console.error('Error creating transaction:', err);
     } finally {
       setSavingTransaction(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id, amount) => {
+    if (!window.confirm(`Удалить операцию на сумму ${amount.toFixed(2)} ₽?`)) {
+      return;
+    }
+
+    try {
+      setError(null);
+      await deleteExpense(id);
+      await loadData();
+      setSuccessMessage('Операция удалена');
+    } catch (err) {
+      setError('Не удалось удалить операцию: ' + err.message);
+      console.error('Error deleting expense:', err);
     }
   };
 
@@ -320,6 +337,7 @@ const Expenses = () => {
                   <th>Сумма</th>
                   <th>Описание</th>
                   <th>Пользователь</th>
+                  <th>Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -339,6 +357,15 @@ const Expenses = () => {
                     </td>
                     <td>{expense.description || '-'}</td>
                     <td>{expense.user_name || '-'}</td>
+                    <td>
+                      <button
+                        className="btn-delete"
+                        onClick={() => handleDeleteExpense(expense.id, expense.amount)}
+                        title="Удалить"
+                      >
+                        🗑️
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

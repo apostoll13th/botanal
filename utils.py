@@ -33,11 +33,10 @@ def build_web_url(user_id: int) -> str:
 def get_main_keyboard() -> ReplyKeyboardMarkup:
     """Get main menu keyboard with bot commands"""
     return ReplyKeyboardMarkup([
-        ['/add_expense', '/daily_report', '/weekly_report'],
-        ['/monthly_report', '/detailed_report'],
-        ['/set_budget', '/my_budgets', '/savings_goals'],
-        ['/set_reminder', '/my_reminders'],
-        ['/web', '/reset_password']
+        ['/add_expense', '/delete_last'],
+        ['/daily_report', '/weekly_report', '/monthly_report'],
+        ['/detailed_report', '/my_budgets'],
+        ['/savings_goals', '/set_reminder', '/reset_password']
     ], resize_keyboard=True)
 
 

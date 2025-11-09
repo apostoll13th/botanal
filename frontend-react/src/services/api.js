@@ -83,6 +83,11 @@ export const createTransaction = async (payload) => {
   return response.data;
 };
 
+export const deleteExpense = async (id) => {
+  const response = await api.delete(`/expenses/${id}`);
+  return response.data;
+};
+
 export const listCategories = async () => {
   const response = await api.get('/categories');
   return response.data;

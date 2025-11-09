@@ -1131,6 +1131,45 @@ func createExpense(c *gin.Context) {
 	c.JSON(http.StatusCreated, inserted)
 }
 
+// Delete expense by ID
+func deleteExpense(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный идентификатор"})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не удалось определить пользователя"})
+		return
+	}
+
+	// Verify that the expense belongs to the user
+	var existingUserID int
+	err = db.QueryRow("SELECT user_id FROM expenses WHERE id = $1", id).Scan(&existingUserID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Запись не найдена"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if int64(existingUserID) != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Нет доступа к этой записи"})
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM expenses WHERE id = $1", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Запись удалена"})
+}
+
 // Create or update user info
 func createOrUpdateUser(c *gin.Context) {
 	var req userRequest
@@ -1337,7 +1376,7 @@ func main() {
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	router.Use(cors.New(config))
 
 	// API routes
@@ -1351,13 +1390,14 @@ func main() {
 		api.GET("/user", getCurrentUserInfo)
 		api.GET("/expenses", getExpenses)
 		api.GET("/expenses-summary", getExpensesSummary)
+		api.POST("/expenses", createExpense)
+		api.DELETE("/expenses/:id", deleteExpense)
 		api.GET("/budgets", getBudgets)
 		api.POST("/budgets", createBudgetHandler)
 		api.GET("/goals", getSavingsGoals)
 		api.POST("/goals", createSavingsGoalHandler)
 		api.GET("/categories", listCategories)
 		api.POST("/categories", createCategory)
-		api.POST("/expenses", createExpense)
 		api.POST("/users", createOrUpdateUser)
 	}
 

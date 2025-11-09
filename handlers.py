@@ -21,7 +21,8 @@ from database import (
     add_reminder, get_reminders, delete_reminder,
     save_user, get_user_name, get_all_users, get_detailed_monthly_expenses,
     get_available_categories, get_app_user_by_telegram_id,
-    create_portal_user, reset_app_user_password
+    create_portal_user, reset_app_user_password,
+    get_recent_expenses, delete_expense
 )
 from utils import (
     build_web_url, get_main_keyboard, is_bot_command, create_monthly_chart,
@@ -77,26 +78,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     portal_message = build_portal_message(update.effective_user, full_name)
     await update.message.reply_text(portal_message, reply_markup=get_main_keyboard())
-
-
-async def web_interface(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /web command"""
-    user_id = update.effective_user.id
-    web_url = build_web_url(user_id)
-
-    inline_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌐 Открыть личный кабинет", url=web_url)]
-    ])
-
-    await update.message.reply_text(
-        '📊 Веб-интерфейс позволяет:\n\n'
-        '• Просматривать графики расходов\n'
-        '• Анализировать статистику по категориям\n'
-        '• Отслеживать прогресс по бюджетам и целям\n'
-        '• Фильтровать операции по датам\n\n'
-        'Нажмите кнопку ниже для перехода:',
-        reply_markup=inline_keyboard
-    )
 
 
 # ========== EXPENSE HANDLERS ==========
@@ -343,8 +324,9 @@ async def budget_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         amount = float(user_input)
         context.user_data['budget_amount'] = amount
 
-        # Создаем клавиатуру с категориями
-        keyboard = [[category] for category in CATEGORIES]
+        # Создаем клавиатуру с категориями из базы данных
+        categories = get_dynamic_categories()
+        keyboard = [[category] for category in categories]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
         await update.message.reply_text('Выберите категорию для бюджета:', reply_markup=reply_markup)
@@ -522,27 +504,6 @@ async def process_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context.user_data.pop('reminder_text', None)
 
 
-async def show_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /my_reminders command"""
-    user_id = update.effective_user.id
-    reminders = get_reminders(user_id)
-
-    if not reminders:
-        await update.message.reply_text('У вас пока нет напоминаний.', reply_markup=get_main_keyboard())
-        return
-
-    report = format_reminders_report(reminders)
-
-    keyboard = []
-    for reminder in reminders:
-        keyboard.append([InlineKeyboardButton(
-            f"Удалить '{reminder['message'][:20]}..'",
-            callback_data=f"del_reminder_{reminder['id']}"
-        )])
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(report, reply_markup=reply_markup)
 
 
 async def process_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -559,28 +520,67 @@ async def process_reminder_callback(update: Update, context: ContextTypes.DEFAUL
         await query.message.reply_text("Напоминание удалено.", reply_markup=get_main_keyboard())
 
 
-# ========== USER MANAGEMENT ==========
+# ========== EXPENSE DELETION ==========
 
-async def set_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /setname command"""
-    if not context.args:
+async def show_recent_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /delete_last command - show recent expenses with delete buttons"""
+    user_id = update.effective_user.id
+    expenses = get_recent_expenses(user_id, limit=5)
+
+    if not expenses:
         await update.message.reply_text(
-            'Пожалуйста, укажите ваше имя после команды. Например: /setname Иван',
+            'У вас пока нет операций для удаления.',
             reply_markup=get_main_keyboard()
         )
         return
 
-    user_name = ' '.join(context.args)
-    user_id = update.effective_user.id
+    message = "📝 Ваши последние операции:\n\n"
+    keyboard = []
 
-    # Сохраняем имя пользователя в базе данных и контексте
-    context.user_data['user_name'] = user_name
-    save_user(user_id, user_name)
+    for expense in expenses:
+        exp_id = expense['id']
+        amount = float(expense['amount'])
+        category = expense['category']
+        date = expense['date']
+        tx_type = expense.get('transaction_type', 'expense')
+        type_label = '💰 Доход' if tx_type == 'income' else '💸 Расход'
 
-    await update.message.reply_text(
-        f'Ваше имя установлено: {user_name}',
-        reply_markup=get_main_keyboard()
-    )
+        message += f"{type_label}: {amount:.2f} руб. • {category} • {date}\n"
+
+        keyboard.append([InlineKeyboardButton(
+            f"🗑️ Удалить: {amount:.2f} ₽ ({category})",
+            callback_data=f"del_expense_{exp_id}"
+        )])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup)
+
+
+async def process_delete_expense_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle expense deletion callback buttons"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("del_expense_"):
+        expense_id = int(query.data.split("_")[-1])
+        user_id = update.effective_user.id
+
+        success = delete_expense(user_id, expense_id)
+
+        if success:
+            await query.message.edit_text(
+                "✅ Операция успешно удалена.",
+                reply_markup=None
+            )
+        else:
+            await query.message.edit_text(
+                "❌ Не удалось удалить операцию. Возможно, она уже удалена.",
+                reply_markup=None
+            )
+
+
+# ========== USER MANAGEMENT ==========
+
 
 
 async def reset_portal_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
