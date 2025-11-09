@@ -12,8 +12,6 @@ from config import Config, BUDGET_AMOUNT, BUDGET_CATEGORY, SAVINGS_DESCRIPTION, 
 
 # Import database components
 from db import wait_for_db
-from db_schema import init_db, update_database_structure
-from database_migrations import check_and_update_database
 
 # Import utilities
 from utils import setup_logging
@@ -127,18 +125,7 @@ def main() -> None:
     logger.info("Waiting for database...")
     wait_for_db()
 
-    logger.info("Initializing database schema...")
-    init_db()
-
-    # Apply database migrations
-    try:
-        logger.info("Applying database migrations...")
-        check_and_update_database()
-    except Exception as e:
-        logger.error(f"Error applying migrations: {e}")
-        # Fallback to old migration method
-        logger.info("Falling back to legacy migration method...")
-        update_database_structure()
+    logger.info("Database connection ready")
 
     # Create application
     logger.info("Creating bot application...")

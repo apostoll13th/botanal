@@ -24,6 +24,33 @@
   opacity: 0.9;
 }
 
+.user-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.user-form input {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: none;
+  min-width: 180px;
+}
+
+.user-form button {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.user-form button:hover {
+  background: rgba(255,255,255,0.35);
+}
+
 .tabs {
   background: white;
   display: flex;
@@ -124,6 +151,16 @@
     flex-direction: column;
     gap: 1rem;
     text-align: center;
+  }
+
+  .user-form {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .user-form input,
+  .user-form button {
+    width: 100%;
   }
 
   .tabs {

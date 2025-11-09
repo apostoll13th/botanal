@@ -17,14 +17,16 @@
   font-weight: 500;
 }
 
-.filter-group input {
+.filter-group input,
+.filter-group select {
   padding: 0.6rem;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 0.95rem;
 }
 
-.filter-group input:focus {
+.filter-group input:focus,
+.filter-group select:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -110,6 +112,50 @@
   font-size: 1.05rem;
 }
 
+.amount.income {
+  color: #16a34a;
+}
+
+.transaction-form,
+.category-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-row input,
+.form-row select {
+  padding: 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.type-badge.expense {
+  background: rgba(255, 99, 132, 0.15);
+  color: #c53030;
+}
+
+.type-badge.income {
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+}
+
 @media (max-width: 768px) {
   .filters {
     grid-template-columns: 1fr;
@@ -130,5 +176,10 @@
   .expenses-table th,
   .expenses-table td {
     padding: 0.5rem;
+  }
+
+  .transaction-form,
+  .category-form {
+    grid-template-columns: 1fr;
   }
 }

@@ -51,15 +51,15 @@ cd backend-go && go mod download
 - **utils.py**: Helper functions and chart generation
 - **config.py**: Configuration management
 - **db.py, db_schema.py, database_migrations.py**: Database layer
-- **backend-go/**: Go REST API for web interface
+- **backend-go/**: Go REST API + schema owner
   - main.go: API server with Gin framework
+  - schema.go: Database bootstrap + migrations
   - go.mod: Go dependencies
 - **backend/**: Legacy Flask API (deprecated, use Go version)
-- **frontend/**: Web interface (HTML/JS/CSS)
-  - index.html: Main page with tabs
-  - app.js: JavaScript logic and API calls
-  - styles.css: Responsive styling
-  - nginx.conf: Nginx configuration
+- **frontend-react/**: React 18 UI (PWA)
+  - src/components: Overview/Expenses/Budgets/Goals
+  - src/services/api.js: Axios client (`/api/*`)
+  - nginx.conf: Nginx configuration for production build
 
 ### Current Bot Structure (Refactored)
 - **bot.py**: Main entry point and orchestration (161 lines)
@@ -71,11 +71,15 @@ cd backend-go && go mod download
 - **database_migrations.py**: Proper migration system
 
 ### Database Schema
-- **expenses**: Tracks user expenses (id, user_id, category, amount, date, description, user_name)
-- **budgets**: Budget limits by category/period (id, user_id, category, amount, period, user_name)
-- **savings_goals**: Financial targets (id, user_id, goal_name, target_amount, current_amount, user_name)
-- **reminders**: Scheduled reminders (id, user_id, text, frequency, next_run)
-- **users**: User information (user_id, username, user_name)
+- **users**: Telegram profiles (`user_id`, `user_name`, `created_date`)
+- **expenses**: Все операции с колонкой `transaction_type` (`expense`/`income`)
+- **budgets**: Budget limits by category/period
+- **savings_goals**: Financial targets
+- **reminders**: Scheduled reminders
+- **categories**: Master list of categories with type (`expense`/`income`)
+- **migrations**: История миграций из Go backend (`schema.go`)
+
+> Schema & migrations живут в `backend-go/schema.go`. Bot больше не выполняет DDL.
 
 ### Core Features
 1. **Expense Management**: Add expenses with categories, view reports
@@ -84,6 +88,7 @@ cd backend-go && go mod download
 4. **Reports**: Generate daily/weekly/monthly reports with charts
 5. **Reminders**: Set recurring reminders
 6. **Multi-user**: Supports multiple users with username tracking
+7. **PWA UI**: Добавление расходов/доходов и управление категориями через React UI
 
 ### Conversation Flows
 - EXPENSE_ENTRY: Multi-step expense addition
@@ -107,9 +112,12 @@ cd backend-go && go mod download
 7. ✅ **Added error handling** in database and API layers
 8. ✅ **Created Go backend** for REST API (Gin framework)
 9. ✅ **Created React frontend** for web interface
+10. ✅ **Перенесли создание/миграции схемы в Go backend + добавили REST CRUD для UI (категории, операции, пользователи)**
 
-### Database Migration Issues
-The code handles missing columns by catching exceptions and adding them dynamically. This should be replaced with proper migration system.
+### Database Migration Notes
+- Все миграции описываются в `backend-go/schema.go` (структура `migration`).
+- Любое изменение схемы → новый `version` + `up`-функция.
+- Backend применяет миграции автоматически при старте, поэтому не нужно держать дубли в Python.
 
 ## Deployment Considerations
 
@@ -135,9 +143,9 @@ The code handles missing columns by catching exceptions and adding them dynamica
 3. Add to help message in help_command()
 
 ### Adding Database Column
-1. Add column in init_db() function
-2. Update relevant INSERT/UPDATE queries
-3. Handle backward compatibility in existing records
+1. Добавить колонку/таблицу в `createBaseTables()` или новую миграцию в `runMigrations()` (`backend-go/schema.go`).
+2. Обновить Go-структуры и SQL (`backend-go/main.go`) + фронтенд API/компоненты, если поле нужно UI.
+3. При необходимости обновить Python-бот (`database.py`) только для бизнес-логики (без DDL).
 
 ### Testing
 Currently no tests exist. When adding tests:
@@ -146,9 +154,21 @@ Currently no tests exist. When adding tests:
 - Test chart generation with sample data
 
 ## Known Issues
-1. All code in single file makes maintenance difficult
-2. Database migrations handled with try/catch blocks
-3. Mixed Russian/English in UI and comments
-4. No input validation for amounts
-5. No pagination for large reports
-6. Chart generation can be slow for large datasets
+1. Legacy references to monolithic bot still exist in docs (нужна постепенная чистка).
+2. Нет пагинации/поиска в новом списке операций (может быть тяжелым при большом объеме).
+3. Смешанный RU/EN UI и комментарии.
+4. Валидация сумм/дат на фронте минимальна.
+5. Нет ролей/аутентификации в REST API (все доверяют `user_id`).
+6. Chart generation can be slow for large datasets.
+
+## REST API Cheatsheet
+
+| Method | Endpoint | Описание |
+|--------|----------|----------|
+| `GET`  | `/api/expenses/:user_id` | Список операций (query `start_date`, `end_date`, `category`, `type=expense/income/all`). |
+| `POST` | `/api/expenses` | Создание расхода или дохода (`transaction_type`). |
+| `GET`  | `/api/categories` | Получить справочник категорий. |
+| `POST` | `/api/categories` | Создать/обновить категорию. |
+| `POST` | `/api/users` | Создать/обновить пользователя (используется фронтом для имени). |
+
+Backend автоматически приводит схему в порядок при старте (см. `schema.go`), поэтому при любых изменениях БД достаточно перезапустить сервис `backend`.

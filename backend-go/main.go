@@ -2,11 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -26,6 +28,7 @@ type Expense struct {
 	Date        string  `json:"date"`
 	Description *string `json:"description,omitempty"`
 	UserName    *string `json:"user_name,omitempty"`
+	Type        string  `json:"transaction_type"`
 }
 
 type ExpenseSummary struct {
@@ -71,6 +74,34 @@ type User struct {
 	CreatedDate *string `json:"created_date,omitempty"`
 }
 
+type Category struct {
+	ID          int     `json:"id"`
+	Name        string  `json:"name"`
+	Type        string  `json:"type"`
+	Description *string `json:"description,omitempty"`
+}
+
+type createExpenseRequest struct {
+	UserID          int     `json:"user_id" binding:"required"`
+	Amount          float64 `json:"amount" binding:"required"`
+	Category        string  `json:"category" binding:"required"`
+	Date            string  `json:"date"`
+	Description     string  `json:"description"`
+	UserName        string  `json:"user_name"`
+	TransactionType string  `json:"transaction_type"`
+}
+
+type categoryRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Type        string `json:"type" binding:"required"`
+	Description string `json:"description"`
+}
+
+type userRequest struct {
+	UserID   int    `json:"user_id" binding:"required"`
+	UserName string `json:"user_name" binding:"required"`
+}
+
 // Initialize database connection
 func initDB() {
 	var err error
@@ -85,14 +116,12 @@ func initDB() {
 		if err == nil {
 			err = db.Ping()
 			if err == nil {
-				log.Println("✅ Successfully connected to database")
-
-				// Check if tables exist (wait for bot to create them)
-				if checkTablesExist() {
-					log.Println("✅ Database tables found")
+				if schemaErr := ensureSchema(db); schemaErr != nil {
+					log.Printf("⚠️  Schema initialization error: %v", schemaErr)
+				} else {
+					log.Println("✅ Database schema ready")
 					return
 				}
-				log.Printf("⏳ Waiting for database tables... (attempt %d/10)", i+1)
 			}
 		}
 		log.Printf("⏳ Waiting for database... (attempt %d/10): %v", i+1, err)
@@ -100,20 +129,6 @@ func initDB() {
 	}
 
 	log.Fatal("❌ Failed to connect to database after 10 attempts:", err)
-}
-
-// Check if required tables exist
-func checkTablesExist() bool {
-	var exists bool
-	query := `
-		SELECT EXISTS (
-			SELECT FROM information_schema.tables
-			WHERE table_schema = 'public'
-			AND table_name = 'expenses'
-		)
-	`
-	err := db.QueryRow(query).Scan(&exists)
-	return err == nil && exists
 }
 
 // Health check endpoint
@@ -132,8 +147,9 @@ func getExpenses(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 	category := c.Query("category")
+	txType := strings.ToLower(c.DefaultQuery("type", "expense"))
 
-	query := "SELECT id, user_id, amount, category, date, description, user_name FROM expenses WHERE user_id = $1"
+	query := "SELECT id, user_id, amount, category, date, description, user_name, transaction_type FROM expenses WHERE user_id = $1"
 	args := []interface{}{userID}
 	argCount := 1
 
@@ -155,6 +171,16 @@ func getExpenses(c *gin.Context) {
 		args = append(args, category)
 	}
 
+	if txType != "all" {
+		if txType != "expense" && txType != "income" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid transaction type"})
+			return
+		}
+		argCount++
+		query += fmt.Sprintf(" AND transaction_type = $%d", argCount)
+		args = append(args, txType)
+	}
+
 	query += " ORDER BY date DESC"
 
 	rows, err := db.Query(query, args...)
@@ -167,7 +193,7 @@ func getExpenses(c *gin.Context) {
 	var expenses []Expense
 	for rows.Next() {
 		var e Expense
-		err := rows.Scan(&e.ID, &e.UserID, &e.Amount, &e.Category, &e.Date, &e.Description, &e.UserName)
+		err := rows.Scan(&e.ID, &e.UserID, &e.Amount, &e.Category, &e.Date, &e.Description, &e.UserName, &e.Type)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -197,7 +223,7 @@ func getExpensesSummary(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT category, SUM(amount) as total
 		FROM expenses
-		WHERE user_id = $1 AND date >= $2
+		WHERE user_id = $1 AND date >= $2 AND transaction_type = 'expense'
 		GROUP BY category
 		ORDER BY total DESC
 	`, userID, date30DaysAgo)
@@ -225,7 +251,7 @@ func getExpensesSummary(c *gin.Context) {
 	rows2, err := db.Query(`
 		SELECT date, SUM(amount) as daily_total
 		FROM expenses
-		WHERE user_id = $1 AND date >= $2
+		WHERE user_id = $1 AND date >= $2 AND transaction_type = 'expense'
 		GROUP BY date
 		ORDER BY date
 	`, userID, date30DaysAgo)
@@ -314,7 +340,7 @@ func getBudgets(c *gin.Context) {
 		err = db.QueryRow(`
 			SELECT SUM(amount)
 			FROM expenses
-			WHERE user_id = $1 AND category = $2 AND date >= $3
+			WHERE user_id = $1 AND category = $2 AND date >= $3 AND transaction_type = 'expense'
 		`, userID, b.Category, periodStart.Format("2006-01-02")).Scan(&spent)
 		if err != nil && err != sql.ErrNoRows {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -397,6 +423,11 @@ func getUserInfo(c *gin.Context) {
 	var user User
 	user.UserID = userID
 
+	if err := ensureUserRecord(userID, ""); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	err = db.QueryRow("SELECT user_name, created_date FROM users WHERE user_id = $1", userID).Scan(&user.UserName, &user.CreatedDate)
 	if err == sql.ErrNoRows {
 		// User not found, return default
@@ -408,6 +439,195 @@ func getUserInfo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+// List categories
+func listCategories(c *gin.Context) {
+	rows, err := db.Query(`SELECT id, name, type, description FROM categories ORDER BY type, name`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var categories []Category
+	for rows.Next() {
+		var cat Category
+		err := rows.Scan(&cat.ID, &cat.Name, &cat.Type, &cat.Description)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		categories = append(categories, cat)
+	}
+
+	if categories == nil {
+		categories = []Category{}
+	}
+
+	c.JSON(http.StatusOK, categories)
+}
+
+// Create or update category
+func createCategory(c *gin.Context) {
+	var req categoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	txType, err := normalizeTransactionType(req.Type)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ensureCategoryRecord(req.Name, txType, req.Description); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"name":        req.Name,
+		"type":        txType,
+		"description": req.Description,
+	})
+}
+
+// Create expense (expense or income)
+func createExpense(c *gin.Context) {
+	var req createExpenseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Amount must be greater than zero"})
+		return
+	}
+
+	txType := req.TransactionType
+	if txType == "" {
+		txType = "expense"
+	}
+
+	txType, err := normalizeTransactionType(txType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	txDate := req.Date
+	if txDate == "" {
+		txDate = time.Now().Format("2006-01-02")
+	}
+
+	if err := ensureUserRecord(req.UserID, req.UserName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ensureCategoryRecord(req.Category, txType, ""); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var inserted Expense
+	err = db.QueryRow(
+		`INSERT INTO expenses (user_id, amount, category, date, description, user_name, transaction_type)
+		 VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), $7)
+		 RETURNING id, date`,
+		req.UserID, req.Amount, req.Category, txDate, req.Description, req.UserName, txType,
+	).Scan(&inserted.ID, &inserted.Date)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	inserted.UserID = req.UserID
+	inserted.Amount = req.Amount
+	inserted.Category = req.Category
+	inserted.Description = nullableString(req.Description)
+	inserted.UserName = nullableString(req.UserName)
+	inserted.Type = txType
+
+	c.JSON(http.StatusCreated, inserted)
+}
+
+// Create or update user info
+func createOrUpdateUser(c *gin.Context) {
+	var req userRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := upsertUser(req.UserID, req.UserName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"user_id": req.UserID, "user_name": req.UserName})
+}
+
+func ensureUserRecord(userID int, userName string) error {
+	if userName == "" {
+		// Try to keep existing name
+		var existing string
+		err := db.QueryRow(`SELECT user_name FROM users WHERE user_id = $1`, userID).Scan(&existing)
+		if err == nil {
+			userName = existing
+		} else {
+			userName = "Пользователь"
+		}
+	}
+
+	return upsertUser(userID, userName)
+}
+
+func upsertUser(userID int, userName string) error {
+	if userName == "" {
+		userName = "Пользователь"
+	}
+
+	_, err := db.Exec(`
+		INSERT INTO users (user_id, user_name)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET user_name = EXCLUDED.user_name
+	`, userID, userName)
+	return err
+}
+
+func ensureCategoryRecord(name, catType, description string) error {
+	if name == "" {
+		return errors.New("category name is required")
+	}
+
+	_, err := db.Exec(`
+		INSERT INTO categories (name, type, description)
+		VALUES ($1, $2, NULLIF($3, ''))
+		ON CONFLICT (name) DO UPDATE SET type = EXCLUDED.type, description = COALESCE(EXCLUDED.description, categories.description)
+	`, name, catType, description)
+	return err
+}
+
+func normalizeTransactionType(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "expense", "расход":
+		return "expense", nil
+	case "income", "доход":
+		return "income", nil
+	default:
+		return "", errors.New("transaction type must be expense or income")
+	}
+}
+
+func nullableString(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func main() {
@@ -442,6 +662,10 @@ func main() {
 		api.GET("/budgets/:user_id", getBudgets)
 		api.GET("/goals/:user_id", getSavingsGoals)
 		api.GET("/user/:user_id", getUserInfo)
+		api.GET("/categories", listCategories)
+		api.POST("/categories", createCategory)
+		api.POST("/expenses", createExpense)
+		api.POST("/users", createOrUpdateUser)
 	}
 
 	// Start server

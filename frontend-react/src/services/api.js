@@ -20,6 +20,7 @@ export const getExpenses = async (userId, filters = {}) => {
   if (filters.startDate) params.append('start_date', filters.startDate);
   if (filters.endDate) params.append('end_date', filters.endDate);
   if (filters.category) params.append('category', filters.category);
+  if (filters.type) params.append('type', filters.type);
 
   const response = await api.get(`/expenses/${userId}?${params.toString()}`);
   return response.data;
@@ -37,6 +38,26 @@ export const getBudgets = async (userId) => {
 
 export const getSavingsGoals = async (userId) => {
   const response = await api.get(`/goals/${userId}`);
+  return response.data;
+};
+
+export const createTransaction = async (payload) => {
+  const response = await api.post('/expenses', payload);
+  return response.data;
+};
+
+export const listCategories = async () => {
+  const response = await api.get('/categories');
+  return response.data;
+};
+
+export const createCategory = async (payload) => {
+  const response = await api.post('/categories', payload);
+  return response.data;
+};
+
+export const upsertUser = async (payload) => {
+  const response = await api.post('/users', payload);
   return response.data;
 };
 

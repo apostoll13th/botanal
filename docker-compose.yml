@@ -22,6 +22,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/expenses}
     depends_on:
       - db
+      - backend
     restart: unless-stopped
 
   backend:
@@ -34,7 +35,6 @@ services:
       GIN_MODE: release
     depends_on:
       - db
-      - bot
     ports:
       - "5000:5000"
     restart: unless-stopped
