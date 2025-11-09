@@ -25,7 +25,7 @@ from handlers import (
     savings_goal_start, savings_description, savings_amount, show_savings_goals,
     process_savings_callback,
     set_reminder_start, show_reminders, process_reminder_callback,
-    set_username, handle_general_messages,
+    set_username, reset_portal_password, handle_general_messages,
     send_daily_reports, check_reminders,
     category_callback
 )
