@@ -9,7 +9,7 @@ import './Expenses.css';
 
 const defaultDate = () => new Date().toISOString().slice(0, 10);
 
-const Expenses = ({ userId }) => {
+const Expenses = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -34,17 +34,18 @@ const Expenses = ({ userId }) => {
   });
   const [savingTransaction, setSavingTransaction] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     loadData();
     loadCategories();
-  }, [userId]);
+  }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getExpenses(userId, filters);
+      const data = await getExpenses(filters);
       setExpenses(data);
     } catch (err) {
       setError('Ошибка загрузки расходов: ' + err.message);
@@ -53,6 +54,12 @@ const Expenses = ({ userId }) => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(''), 4000);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
 
   const loadCategories = async () => {
     try {
@@ -112,14 +119,15 @@ const Expenses = ({ userId }) => {
       setSavingTransaction(true);
       setError(null);
 
-      await createTransaction({
-        user_id: Number(userId),
+      const payload = {
         amount: Number(transactionForm.amount),
         category: transactionForm.category,
         date: transactionForm.date,
         description: transactionForm.description,
         transaction_type: transactionForm.transactionType,
-      });
+      };
+
+      await createTransaction(payload);
 
       setTransactionForm({
         amount: '',
@@ -131,6 +139,7 @@ const Expenses = ({ userId }) => {
 
       await loadData();
       await loadCategories();
+      setSuccessMessage(`Операция на сумму ${payload.amount.toFixed(2)} ₽ сохранена`);
     } catch (err) {
       setError('Не удалось сохранить операцию: ' + err.message);
       console.error('Error creating transaction:', err);
@@ -168,6 +177,7 @@ const Expenses = ({ userId }) => {
         description: '',
       });
       await loadCategories();
+      setSuccessMessage('Категория сохранена');
     } catch (err) {
       setError('Не удалось сохранить категорию: ' + err.message);
       console.error('Error creating category:', err);
@@ -178,6 +188,16 @@ const Expenses = ({ userId }) => {
 
   const filteredCategories = categories.filter(cat => cat.type === transactionForm.transactionType);
 
+  const expenseTotal = expenses
+    .filter(item => item.transaction_type !== 'income')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const incomeTotal = expenses
+    .filter(item => item.transaction_type === 'income')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const balance = incomeTotal - expenseTotal;
+
   if (loading) {
     return <div className="loading">Загрузка расходов...</div>;
   }
@@ -185,6 +205,27 @@ const Expenses = ({ userId }) => {
   return (
     <div>
       {error && <div className="error">{error}</div>}
+      {successMessage && <div className="status-message">{successMessage}</div>}
+
+      <div className="card">
+        <h3>Быстрые показатели</h3>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-label">Расходы</span>
+            <span className="stat-value negative">{expenseTotal.toFixed(2)} ₽</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-label">Доходы</span>
+            <span className="stat-value positive">{incomeTotal.toFixed(2)} ₽</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-label">Баланс</span>
+            <span className={`stat-value ${balance >= 0 ? 'positive' : 'negative'}`}>
+              {balance >= 0 ? '+' : '-'}{Math.abs(balance).toFixed(2)} ₽
+            </span>
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <h3>Фильтры</h3>

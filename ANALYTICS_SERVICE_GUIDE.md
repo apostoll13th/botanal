@@ -9,14 +9,14 @@
 | Go Backend API | `backend-go/main.go`, `backend-go/schema.go` | Единственный владелец схемы: создает таблицы, применяет миграции, отдает REST эндпоинты `/api/*`. |
 | Telegram Bot (Python) | `bot.py`, `database.py` | Работает с готовой схемой: ждет БД, читает/пишет данные команд, но не мигрирует таблицы. |
 | React Frontend (PWA) | `frontend-react/` | Компоненты `Overview/Expenses/Budgets/Goals/Expenses` визуализируют данные и теперь пишут их через API (категории, операции, профиль). |
-| PostgreSQL | `docker-compose.yml` (`db` сервис) | Хранит все таблицы (`users`, `expenses`, `budgets`, `savings_goals`, `reminders`, `categories`, `migrations`). |
+| PostgreSQL | `docker-compose.yml` (`db` сервис) | Хранит все таблицы (`users`, `app_users`, `expenses`, `budgets`, `savings_goals`, `reminders`, `categories`, `migrations`). |
 
 > Ключевой момент: **только Go backend владеет схемой БД**. Бот и UI работают поверх REST API и не содержат собственной логики миграций.
 
 ## 2. Как создаются таблицы
 
 1. `backend-go/main.go` подключается к PostgreSQL.
-2. `ensureSchema()` в `schema.go` создает базовые таблицы (`users`, `expenses`, `budgets`, `savings_goals`, `reminders`, `categories`, `migrations`).
+2. `ensureSchema()` в `schema.go` создает базовые таблицы (`users`, `app_users`, `expenses`, `budgets`, `savings_goals`, `reminders`, `categories`, `migrations`).
 3. Запускаются миграции (список в `schema.go`):
    - `#1` добавляет `transaction_type` в `expenses` и backfill'ит существующие записи значением `expense`.
    - `#2` переносит уникальные категории из `expenses` в новую таблицу `categories`.
@@ -63,11 +63,13 @@ docker compose up --build        # старт всех сервисов
 2. **API**  
    ```bash
    curl http://localhost:5000/api/health
-   curl "http://localhost:5000/api/expenses-summary/123456"
+   curl -X POST http://localhost:5000/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"login":"admin","password":"adminStrongPass!"}'
    ```
-   Замените `123456` на реальный `user_id`.
+   Полученный токен используйте в заголовке `Authorization: Bearer ...` для остальных запросов.
 3. **Веб-интерфейс**  
-   `http://localhost:8080?user_id=ВАШ_TELEGRAM_ID`
+   `http://localhost:8080` → введите корпоративный логин/пароль (см. codex.md / таблицу `app_users`).
 
 Если фронт открыт, но данные не грузятся, проверьте вкладку Network → запросы к `/api/...`.
 
@@ -75,7 +77,7 @@ docker compose up --build        # старт всех сервисов
 
 | Слой | Что делает | Где смотреть |
 |------|------------|--------------|
-| Сбор данных | UI/бот создают операции, категории и профили через REST (`POST /api/expenses`, `/api/categories`, `/api/users`). | `frontend-react/src/components/Expenses.js`, `backend-go/main.go`. |
+| Сбор данных | UI/бот создают операции, категории и профили через REST (`POST /api/auth/login`, `/api/expenses`, `/api/categories`). | `frontend-react/src/components/Expenses.js`, `backend-go/main.go`. |
 | Подготовка данных | PostgreSQL + миграции из Go (`schema.go`). | Таблицы `expenses`, `categories`, `budgets`, `savings_goals`. |
 | Аналитика (API) | Go эндпоинты `getExpenses`, `getExpensesSummary`, `getBudgets`, `getSavingsGoals`. | `backend-go/main.go`. |
 | Визуализация | React компоненты `Overview`, `Expenses`, `Budgets`, `Goals`. | `frontend-react/src/components/*`. |

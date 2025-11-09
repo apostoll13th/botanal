@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,9 +18,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
 
-var db *sql.DB
+var (
+	db        *sql.DB
+	jwtSecret []byte
+)
 
 // Database models
 type Expense struct {
@@ -74,6 +81,23 @@ type User struct {
 	CreatedDate *string `json:"created_date,omitempty"`
 }
 
+type AppUser struct {
+	ID             int
+	Login          string
+	PasswordHash   string
+	FullName       *string
+	Role           string
+	TelegramUserID int64
+}
+
+type tokenPayload struct {
+	UserID         int    `json:"uid"`
+	TelegramUserID int64  `json:"tid"`
+	Login          string `json:"login"`
+	Role           string `json:"role"`
+	ExpiresAt      int64  `json:"exp"`
+}
+
 type Category struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name"`
@@ -82,7 +106,6 @@ type Category struct {
 }
 
 type createExpenseRequest struct {
-	UserID          int     `json:"user_id" binding:"required"`
 	Amount          float64 `json:"amount" binding:"required"`
 	Category        string  `json:"category" binding:"required"`
 	Date            string  `json:"date"`
@@ -100,6 +123,16 @@ type categoryRequest struct {
 type userRequest struct {
 	UserID   int    `json:"user_id" binding:"required"`
 	UserName string `json:"user_name" binding:"required"`
+}
+
+type loginRequest struct {
+	Login    string `json:"login" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type loginResponse struct {
+	Token string `json:"token"`
+	User  any    `json:"user"`
 }
 
 // Initialize database connection
@@ -138,12 +171,7 @@ func healthCheck(c *gin.Context) {
 
 // Get expenses for a user with optional filters
 func getExpenses(c *gin.Context) {
-	userID, err := strconv.Atoi(c.Param("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
-
+	userID := getTelegramUserID(c)
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 	category := c.Query("category")
@@ -210,11 +238,7 @@ func getExpenses(c *gin.Context) {
 
 // Get expenses summary (last 30 days)
 func getExpensesSummary(c *gin.Context) {
-	userID, err := strconv.Atoi(c.Param("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
+	userID := getTelegramUserID(c)
 
 	// Date 30 days ago
 	date30DaysAgo := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
@@ -290,11 +314,7 @@ func getExpensesSummary(c *gin.Context) {
 
 // Get budgets for a user
 func getBudgets(c *gin.Context) {
-	userID, err := strconv.Atoi(c.Param("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
+	userID := getTelegramUserID(c)
 
 	rows, err := db.Query(`
 		SELECT id, category, amount, period
@@ -369,11 +389,7 @@ func getBudgets(c *gin.Context) {
 
 // Get savings goals for a user
 func getSavingsGoals(c *gin.Context) {
-	userID, err := strconv.Atoi(c.Param("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
+	userID := getTelegramUserID(c)
 
 	rows, err := db.Query(`
 		SELECT id, COALESCE(goal_name, description) as name, description,
@@ -413,24 +429,18 @@ func getSavingsGoals(c *gin.Context) {
 }
 
 // Get user info
-func getUserInfo(c *gin.Context) {
-	userID, err := strconv.Atoi(c.Param("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
-
+func getCurrentUserInfo(c *gin.Context) {
+	userID := getTelegramUserID(c)
 	var user User
-	user.UserID = userID
+	user.UserID = int(userID)
 
 	if err := ensureUserRecord(userID, ""); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	err = db.QueryRow("SELECT user_name, created_date FROM users WHERE user_id = $1", userID).Scan(&user.UserName, &user.CreatedDate)
+	err := db.QueryRow("SELECT user_name, created_date FROM users WHERE user_id = $1", userID).Scan(&user.UserName, &user.CreatedDate)
 	if err == sql.ErrNoRows {
-		// User not found, return default
 		user.UserName = "Пользователь"
 		user.CreatedDate = nil
 	} else if err != nil {
@@ -439,6 +449,179 @@ func getUserInfo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+func loginHandler(c *gin.Context) {
+	var req loginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := getAppUserByLogin(strings.TrimSpace(req.Login))
+	if err == sql.ErrNoRows || user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный логин или пароль"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный логин или пароль"})
+		return
+	}
+
+	token, err := generateToken(*user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось выдать токен"})
+		return
+	}
+
+	responseUser := gin.H{
+		"id":               user.ID,
+		"login":            user.Login,
+		"role":             user.Role,
+		"telegram_user_id": user.TelegramUserID,
+	}
+	if user.FullName != nil {
+		responseUser["full_name"] = *user.FullName
+	}
+
+	c.JSON(http.StatusOK, loginResponse{
+		Token: token,
+		User:  responseUser,
+	})
+}
+
+func currentUserHandler(c *gin.Context) {
+	login := c.GetString("app_user_login")
+	user, err := getAppUserByLogin(login)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := gin.H{
+		"id":               user.ID,
+		"login":            user.Login,
+		"role":             user.Role,
+		"telegram_user_id": user.TelegramUserID,
+	}
+	if user.FullName != nil {
+		response["full_name"] = *user.FullName
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func authMiddleware(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Требуется авторизация"})
+		return
+	}
+
+	tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 2 {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+		return
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+		return
+	}
+
+	signatureBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+		return
+	}
+
+	mac := hmac.New(sha256.New, jwtSecret)
+	mac.Write(payloadBytes)
+	expectedSig := mac.Sum(nil)
+
+	if !hmac.Equal(signatureBytes, expectedSig) {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+		return
+	}
+
+	var payload tokenPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+		return
+	}
+
+	if time.Now().Unix() > payload.ExpiresAt {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Срок действия токена истёк"})
+		return
+	}
+
+	c.Set("app_user_id", payload.UserID)
+	c.Set("telegram_user_id", payload.TelegramUserID)
+	c.Set("app_user_login", payload.Login)
+	c.Set("app_user_role", payload.Role)
+
+	c.Next()
+}
+
+func getTelegramUserID(c *gin.Context) int64 {
+	if v, exists := c.Get("telegram_user_id"); exists {
+		if id, ok := v.(int64); ok {
+			return id
+		}
+	}
+	return 0
+}
+
+func getAppUserByLogin(login string) (*AppUser, error) {
+	var (
+		user     AppUser
+		fullName sql.NullString
+	)
+
+	err := db.QueryRow(`
+		SELECT id, login, password_hash, full_name, role, telegram_user_id
+		FROM app_users
+		WHERE login = $1
+	`, login).Scan(&user.ID, &user.Login, &user.PasswordHash, &fullName, &user.Role, &user.TelegramUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if fullName.Valid {
+		user.FullName = &fullName.String
+	}
+
+	return &user, nil
+}
+
+func generateToken(user AppUser) (string, error) {
+	payload := tokenPayload{
+		UserID:         user.ID,
+		TelegramUserID: user.TelegramUserID,
+		Login:          user.Login,
+		Role:           user.Role,
+		ExpiresAt:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	mac := hmac.New(sha256.New, jwtSecret)
+	mac.Write(payloadBytes)
+	signature := mac.Sum(nil)
+
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	encodedSignature := base64.RawURLEncoding.EncodeToString(signature)
+
+	return fmt.Sprintf("%s.%s", encodedPayload, encodedSignature), nil
 }
 
 // List categories
@@ -523,7 +706,13 @@ func createExpense(c *gin.Context) {
 		txDate = time.Now().Format("2006-01-02")
 	}
 
-	if err := ensureUserRecord(req.UserID, req.UserName); err != nil {
+	userID := getTelegramUserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не удалось определить пользователя"})
+		return
+	}
+
+	if err := ensureUserRecord(userID, req.UserName); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -538,14 +727,14 @@ func createExpense(c *gin.Context) {
 		`INSERT INTO expenses (user_id, amount, category, date, description, user_name, transaction_type)
 		 VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), $7)
 		 RETURNING id, date`,
-		req.UserID, req.Amount, req.Category, txDate, req.Description, req.UserName, txType,
+		userID, req.Amount, req.Category, txDate, req.Description, req.UserName, txType,
 	).Scan(&inserted.ID, &inserted.Date)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	inserted.UserID = req.UserID
+	inserted.UserID = int(userID)
 	inserted.Amount = req.Amount
 	inserted.Category = req.Category
 	inserted.Description = nullableString(req.Description)
@@ -563,7 +752,7 @@ func createOrUpdateUser(c *gin.Context) {
 		return
 	}
 
-	if err := upsertUser(req.UserID, req.UserName); err != nil {
+	if err := upsertUser(int64(req.UserID), req.UserName); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -571,7 +760,7 @@ func createOrUpdateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"user_id": req.UserID, "user_name": req.UserName})
 }
 
-func ensureUserRecord(userID int, userName string) error {
+func ensureUserRecord(userID int64, userName string) error {
 	if userName == "" {
 		// Try to keep existing name
 		var existing string
@@ -586,7 +775,7 @@ func ensureUserRecord(userID int, userName string) error {
 	return upsertUser(userID, userName)
 }
 
-func upsertUser(userID int, userName string) error {
+func upsertUser(userID int64, userName string) error {
 	if userName == "" {
 		userName = "Пользователь"
 	}
@@ -634,6 +823,12 @@ func main() {
 	// Load .env file if exists
 	godotenv.Load()
 
+	authSecret := os.Getenv("AUTH_SECRET")
+	if strings.TrimSpace(authSecret) == "" {
+		authSecret = "change-me"
+	}
+	jwtSecret = []byte(authSecret)
+
 	// Initialize database
 	initDB()
 	defer db.Close()
@@ -654,14 +849,18 @@ func main() {
 	router.Use(cors.New(config))
 
 	// API routes
+	router.GET("/api/health", healthCheck)
+	router.POST("/api/auth/login", loginHandler)
+
 	api := router.Group("/api")
+	api.Use(authMiddleware)
 	{
-		api.GET("/health", healthCheck)
-		api.GET("/expenses/:user_id", getExpenses)
-		api.GET("/expenses-summary/:user_id", getExpensesSummary)
-		api.GET("/budgets/:user_id", getBudgets)
-		api.GET("/goals/:user_id", getSavingsGoals)
-		api.GET("/user/:user_id", getUserInfo)
+		api.GET("/me", currentUserHandler)
+		api.GET("/user", getCurrentUserInfo)
+		api.GET("/expenses", getExpenses)
+		api.GET("/expenses-summary", getExpensesSummary)
+		api.GET("/budgets", getBudgets)
+		api.GET("/goals", getSavingsGoals)
 		api.GET("/categories", listCategories)
 		api.POST("/categories", createCategory)
 		api.POST("/expenses", createExpense)

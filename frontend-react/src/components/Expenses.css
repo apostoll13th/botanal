@@ -116,6 +116,48 @@
   color: #16a34a;
 }
 
+.status-message {
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  color: #065f46;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.35rem;
+}
+
+.stat-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.stat-value.positive {
+  color: #059669;
+}
+
+.stat-value.negative {
+  color: #dc2626;
+}
+
 .transaction-form,
 .category-form {
   display: grid;

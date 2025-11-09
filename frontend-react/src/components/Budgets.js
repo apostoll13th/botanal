@@ -2,20 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { getBudgets } from '../services/api';
 import './Budgets.css';
 
-const Budgets = ({ userId }) => {
+const Budgets = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [budgets, setBudgets] = useState([]);
 
   useEffect(() => {
     loadData();
-  }, [userId]);
+  }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getBudgets(userId);
+      const data = await getBudgets();
       setBudgets(data);
     } catch (err) {
       setError('Ошибка загрузки бюджетов: ' + err.message);

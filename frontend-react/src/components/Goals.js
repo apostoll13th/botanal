@@ -2,20 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { getSavingsGoals } from '../services/api';
 import './Goals.css';
 
-const Goals = ({ userId }) => {
+const Goals = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [goals, setGoals] = useState([]);
 
   useEffect(() => {
     loadData();
-  }, [userId]);
+  }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getSavingsGoals(userId);
+      const data = await getSavingsGoals();
       setGoals(data);
     } catch (err) {
       setError('Ошибка загрузки целей: ' + err.message);

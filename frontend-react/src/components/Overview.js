@@ -6,20 +6,20 @@ import { getExpensesSummary } from '../services/api';
 // Регистрируем компоненты Chart.js
 ChartJS.register(ArcElement, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-const Overview = ({ userId }) => {
+const Overview = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
     loadData();
-  }, [userId]);
+  }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getExpensesSummary(userId);
+      const data = await getExpensesSummary();
       setSummary(data);
     } catch (err) {
       setError('Ошибка загрузки данных: ' + err.message);

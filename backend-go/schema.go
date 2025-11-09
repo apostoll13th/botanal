@@ -96,6 +96,17 @@ func createBaseTables(database *sql.DB) error {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
 		`,
+		`
+		CREATE TABLE IF NOT EXISTS app_users (
+			id SERIAL PRIMARY KEY,
+			login TEXT UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			full_name TEXT,
+			role TEXT NOT NULL DEFAULT 'analyst',
+			telegram_user_id BIGINT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+		`,
 	}
 
 	for _, stmt := range statements {
@@ -143,6 +154,30 @@ func runMigrations(database *sql.DB) error {
 					FROM expenses
 					WHERE category IS NOT NULL AND category <> ''
 					ON CONFLICT (name) DO NOTHING
+				`)
+				return err
+			},
+		},
+		{
+			version:     3,
+			description: "Seed default app users",
+			up: func(tx *sql.Tx) error {
+				if _, err := tx.Exec(`
+					INSERT INTO users (user_id, user_name, created_date)
+					VALUES
+						(101010, 'Admin', CURRENT_DATE),
+						(202020, 'Lead Analyst', CURRENT_DATE)
+					ON CONFLICT (user_id) DO NOTHING
+				`); err != nil {
+					return err
+				}
+
+				_, err := tx.Exec(`
+					INSERT INTO app_users (login, password_hash, full_name, role, telegram_user_id)
+					VALUES
+						('admin', '$2a$10$es8RMLseezG07WLrP2nbcuUVHtDHyGtdInIHD51bDu4JRPR70i3V2', 'Администратор', 'admin', 101010),
+						('analyst', '$2a$10$6fx5LKhApNPGgW994lFiYO8sP691iYiADU9UVDybasM6jWFuWHdp2', 'Финансовый аналитик', 'analyst', 202020)
+					ON CONFLICT (login) DO NOTHING
 				`)
 				return err
 			},

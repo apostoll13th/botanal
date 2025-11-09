@@ -10,34 +10,61 @@ const api = axios.create({
   },
 });
 
-export const getUserInfo = async (userId) => {
-  const response = await api.get(`/user/${userId}`);
+let authToken = null;
+
+export const setAuthToken = (token) => {
+  authToken = token;
+  if (token) {
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common.Authorization;
+  }
+};
+
+export const clearAuthToken = () => {
+  authToken = null;
+  delete api.defaults.headers.common.Authorization;
+};
+
+export const login = async (login, password) => {
+  const response = await api.post('/auth/login', { login, password });
   return response.data;
 };
 
-export const getExpenses = async (userId, filters = {}) => {
+export const getCurrentUser = async () => {
+  const response = await api.get('/me');
+  return response.data;
+};
+
+export const getUserProfile = async () => {
+  const response = await api.get('/user');
+  return response.data;
+};
+
+export const getExpenses = async (filters = {}) => {
   const params = new URLSearchParams();
   if (filters.startDate) params.append('start_date', filters.startDate);
   if (filters.endDate) params.append('end_date', filters.endDate);
   if (filters.category) params.append('category', filters.category);
   if (filters.type) params.append('type', filters.type);
 
-  const response = await api.get(`/expenses/${userId}?${params.toString()}`);
+  const query = params.toString();
+  const response = await api.get(`/expenses${query ? `?${query}` : ''}`);
   return response.data;
 };
 
-export const getExpensesSummary = async (userId) => {
-  const response = await api.get(`/expenses-summary/${userId}`);
+export const getExpensesSummary = async () => {
+  const response = await api.get('/expenses-summary');
   return response.data;
 };
 
-export const getBudgets = async (userId) => {
-  const response = await api.get(`/budgets/${userId}`);
+export const getBudgets = async () => {
+  const response = await api.get('/budgets');
   return response.data;
 };
 
-export const getSavingsGoals = async (userId) => {
-  const response = await api.get(`/goals/${userId}`);
+export const getSavingsGoals = async () => {
+  const response = await api.get('/goals');
   return response.data;
 };
 
@@ -53,11 +80,6 @@ export const listCategories = async () => {
 
 export const createCategory = async (payload) => {
   const response = await api.post('/categories', payload);
-  return response.data;
-};
-
-export const upsertUser = async (payload) => {
-  const response = await api.post('/users', payload);
   return response.data;
 };
 

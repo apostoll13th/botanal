@@ -20,35 +20,48 @@
 }
 
 .user-info {
-  font-size: 1rem;
-  opacity: 0.9;
+  font-size: 0.95rem;
+  opacity: 0.95;
 }
 
-.user-form {
+.user-meta {
   display: flex;
-  gap: 0.5rem;
+  gap: 1rem;
   align-items: center;
 }
 
-.user-form input {
-  padding: 0.4rem 0.75rem;
-  border-radius: 999px;
-  border: none;
-  min-width: 180px;
+.user-details {
+  text-align: right;
 }
 
-.user-form button {
+.user-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.user-role {
+  display: block;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.logout-btn {
   background: rgba(255,255,255,0.2);
   border: none;
   color: white;
-  padding: 0.4rem 1rem;
+  padding: 0.45rem 1.2rem;
   border-radius: 999px;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
-.user-form button:hover {
+.logout-btn:hover {
   background: rgba(255,255,255,0.35);
+}
+
+.loader {
+  font-size: 0.85rem;
+  opacity: 0.8;
 }
 
 .tabs {
@@ -95,6 +108,37 @@
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   margin-bottom: 1.5rem;
+}
+
+.empty-state {
+  text-align: center;
+}
+
+.login-form {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.login-form input {
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  width: 100%;
+  max-width: 320px;
+}
+
+.login-form button {
+  border: none;
+  border-radius: 999px;
+  background: #667eea;
+  color: white;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  width: 100%;
+  max-width: 320px;
 }
 
 .card h3 {
@@ -153,13 +197,12 @@
     text-align: center;
   }
 
-  .user-form {
+  .user-meta {
     flex-direction: column;
     width: 100%;
   }
 
-  .user-form input,
-  .user-form button {
+  .login-form button {
     width: 100%;
   }
 

@@ -72,6 +72,7 @@ cd backend-go && go mod download
 
 ### Database Schema
 - **users**: Telegram profiles (`user_id`, `user_name`, `created_date`)
+- **app_users**: Логин/пароль/роль для входа в UI + связь с конкретным `user_id`
 - **expenses**: Все операции с колонкой `transaction_type` (`expense`/`income`)
 - **budgets**: Budget limits by category/period
 - **savings_goals**: Financial targets
@@ -79,7 +80,7 @@ cd backend-go && go mod download
 - **categories**: Master list of categories with type (`expense`/`income`)
 - **migrations**: История миграций из Go backend (`schema.go`)
 
-> Schema & migrations живут в `backend-go/schema.go`. Bot больше не выполняет DDL.
+> Schema & migrations живут в `backend-go/schema.go`. Bot больше не выполняет DDL, а аутентификация реализована через таблицу `app_users` + HMAC-токены.
 
 ### Core Features
 1. **Expense Management**: Add expenses with categories, view reports
@@ -132,7 +133,7 @@ cd backend-go && go mod download
 ### Security Considerations
 - Bot token must be in environment variable, never hardcoded
 - Database file permissions should be restricted
-- Consider adding user authentication beyond Telegram user_id
+- Веб-доступ защищён логином/паролем (`app_users` + токен в заголовке Authorization)
 - Implement rate limiting for expensive operations (chart generation)
 
 ## Common Development Tasks
@@ -154,21 +155,23 @@ Currently no tests exist. When adding tests:
 - Test chart generation with sample data
 
 ## Known Issues
-1. Legacy references to monolithic bot still exist in docs (нужна постепенная чистка).
+1. Legacy references to монолитного бота/старого `user_id`-флоу ещё встречаются в некоторых документах.
 2. Нет пагинации/поиска в новом списке операций (может быть тяжелым при большом объеме).
 3. Смешанный RU/EN UI и комментарии.
 4. Валидация сумм/дат на фронте минимальна.
-5. Нет ролей/аутентификации в REST API (все доверяют `user_id`).
-6. Chart generation can be slow for large datasets.
+5. Chart generation can be slow for large datasets.
 
 ## REST API Cheatsheet
 
 | Method | Endpoint | Описание |
 |--------|----------|----------|
-| `GET`  | `/api/expenses/:user_id` | Список операций (query `start_date`, `end_date`, `category`, `type=expense/income/all`). |
+| `POST` | `/api/auth/login` | Получить токен по логину/паролю (`app_users`). |
+| `GET`  | `/api/me` | Данные авторизованного пользователя (роль, login, telegram_user_id). |
+| `GET`  | `/api/expenses` | Список операций (query `start_date`, `end_date`, `category`, `type`). |
 | `POST` | `/api/expenses` | Создание расхода или дохода (`transaction_type`). |
+| `GET`  | `/api/budgets` | Бюджеты текущего пользователя. |
+| `GET`  | `/api/goals` | Цели экономии. |
 | `GET`  | `/api/categories` | Получить справочник категорий. |
 | `POST` | `/api/categories` | Создать/обновить категорию. |
-| `POST` | `/api/users` | Создать/обновить пользователя (используется фронтом для имени). |
 
-Backend автоматически приводит схему в порядок при старте (см. `schema.go`), поэтому при любых изменениях БД достаточно перезапустить сервис `backend`.
+Backend автоматически приводит схему в порядок при старте (см. `schema.go`), поэтому при любых изменениях БД достаточно перезапустить сервис `backend`. Токены подписываются HMAC (секрет `AUTH_SECRET`), UI хранит их в `localStorage` и отправляет в `Authorization: Bearer ...`.
