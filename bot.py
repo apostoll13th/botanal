@@ -5,6 +5,7 @@ This file orchestrates all components and starts the bot.
 
 import logging
 from datetime import time
+from telegram import BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 
 # Import configuration
@@ -58,6 +59,28 @@ def create_savings_handler():
         },
         fallbacks=[],
     )
+
+
+async def setup_bot_commands(application: Application) -> None:
+    """Register bot commands in Telegram menu"""
+    commands = [
+        BotCommand("start", "Главное меню и информация о боте"),
+        BotCommand("add_expense", "Добавить расход"),
+        BotCommand("delete_last", "Удалить последние операции"),
+        BotCommand("daily_report", "Отчет за сегодня"),
+        BotCommand("weekly_report", "Отчет за неделю"),
+        BotCommand("monthly_report", "Отчет за месяц"),
+        BotCommand("detailed_report", "Детальный отчет по пользователям"),
+        BotCommand("my_budgets", "Мои бюджеты"),
+        BotCommand("set_budget", "Установить бюджет"),
+        BotCommand("savings_goals", "Цели экономии"),
+        BotCommand("add_savings_goal", "Добавить цель экономии"),
+        BotCommand("set_reminder", "Установить напоминание"),
+        BotCommand("reset_password", "Сбросить пароль для веб-кабинета"),
+    ]
+
+    await application.bot.set_my_commands(commands)
+    logger.info(f"Bot commands registered: {len(commands)} commands")
 
 
 def setup_handlers(application: Application) -> None:
@@ -139,6 +162,10 @@ def main() -> None:
     # Setup scheduled tasks
     logger.info("Setting up scheduled tasks...")
     setup_scheduled_tasks(application)
+
+    # Register bot commands in Telegram
+    logger.info("Registering bot commands...")
+    application.post_init = setup_bot_commands
 
     # Start the bot
     logger.info("Starting bot...")
