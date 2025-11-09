@@ -86,14 +86,34 @@ func initDB() {
 			err = db.Ping()
 			if err == nil {
 				log.Println("✅ Successfully connected to database")
-				return
+
+				// Check if tables exist (wait for bot to create them)
+				if checkTablesExist() {
+					log.Println("✅ Database tables found")
+					return
+				}
+				log.Printf("⏳ Waiting for database tables... (attempt %d/10)", i+1)
 			}
 		}
 		log.Printf("⏳ Waiting for database... (attempt %d/10): %v", i+1, err)
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 
 	log.Fatal("❌ Failed to connect to database after 10 attempts:", err)
+}
+
+// Check if required tables exist
+func checkTablesExist() bool {
+	var exists bool
+	query := `
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables
+			WHERE table_schema = 'public'
+			AND table_name = 'expenses'
+		)
+	`
+	err := db.QueryRow(query).Scan(&exists)
+	return err == nil && exists
 }
 
 // Health check endpoint

@@ -13,6 +13,17 @@ services:
     ports:
       - "5432:5432"
 
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/expenses}
+    depends_on:
+      - db
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -23,19 +34,9 @@ services:
       GIN_MODE: release
     depends_on:
       - db
+      - bot
     ports:
       - "5000:5000"
-    restart: unless-stopped
-
-  bot:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot
-    env_file: .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/expenses}
-    depends_on:
-      - db
     restart: unless-stopped
 
   frontend:
