@@ -7,6 +7,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
+import bcrypt
+import psycopg2
+from psycopg2 import IntegrityError
+
 from db import get_db_connection
 from config import PERIOD_LABEL_TO_CODE, CODE_TO_PERIOD_LABEL, Config, CATEGORIES
 
@@ -545,3 +549,70 @@ def get_available_categories() -> List[str]:
     finally:
         conn.close()
     return CATEGORIES
+
+
+# ========== PORTAL ACCOUNTS ==========
+
+def get_app_user_by_telegram_id(user_id: int) -> Optional[Dict]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT id, login, role, full_name
+            FROM app_users
+            WHERE telegram_user_id = %s
+            """,
+            (user_id,),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def create_portal_user(login: str, password: str, telegram_user_id: int, full_name: str = "", role: str = "analyst") -> None:
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO app_users (login, password_hash, full_name, role, telegram_user_id)
+            VALUES (%s, %s, NULLIF(%s, ''), %s, %s)
+            """,
+            (login, password_hash, full_name or "", role, telegram_user_id),
+        )
+        conn.commit()
+    except IntegrityError as exc:
+        conn.rollback()
+        raise ValueError("Login already exists") from exc
+    finally:
+        conn.close()
+
+
+def reset_app_user_password(telegram_user_id: int, new_password: str) -> Optional[str]:
+    password_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE app_users
+            SET password_hash = %s
+            WHERE telegram_user_id = %s
+            RETURNING login
+            """,
+            (password_hash, telegram_user_id),
+        )
+        result = cursor.fetchone()
+        if result:
+            conn.commit()
+            return result["login"]
+        conn.rollback()
+        return None
+    except psycopg2.Error as exc:
+        conn.rollback()
+        logger.error(f"Error resetting password: {exc}")
+        return None
+    finally:
+        conn.close()

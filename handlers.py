@@ -4,6 +4,10 @@ Contains all bot interaction logic.
 """
 
 import logging
+import re
+import secrets
+import string
+from typing import Optional
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler,
@@ -16,7 +20,8 @@ from database import (
     add_savings_goal, get_savings_goals, update_savings_progress,
     add_reminder, get_reminders, delete_reminder,
     save_user, get_user_name, get_all_users, get_detailed_monthly_expenses,
-    get_available_categories
+    get_available_categories, get_app_user_by_telegram_id,
+    create_portal_user, reset_app_user_password
 )
 from utils import (
     build_web_url, get_main_keyboard, is_bot_command, create_monthly_chart,
@@ -43,6 +48,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command"""
     user_id = update.effective_user.id
 
+    full_name = update.effective_user.full_name or update.effective_user.first_name or update.effective_user.username or "Пользователь"
+    context.user_data['user_name'] = full_name
+    save_user(user_id, full_name)
+
     # Создаем инлайн-кнопку для веб-интерфейса
     web_url = build_web_url(user_id)
     inline_keyboard = InlineKeyboardMarkup([
@@ -65,6 +74,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         '🚀 Новинка! Теперь вы можете просматривать свою статистику в удобном веб-интерфейсе:',
         reply_markup=inline_keyboard
     )
+
+    portal_message = build_portal_message(update.effective_user, full_name)
+    await update.message.reply_text(portal_message, reply_markup=get_main_keyboard())
 
 
 async def web_interface(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -571,6 +583,32 @@ async def set_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def reset_portal_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reset or create portal password for current user"""
+    user = update.effective_user
+    user_id = user.id
+    new_password = generate_password()
+
+    login = reset_app_user_password(user_id, new_password)
+    if not login:
+        # create a new account automatically
+        full_name = user.full_name or user.first_name or user.username or "Пользователь"
+        login_candidate = sanitize_login(user.username, user_id)
+        try:
+            create_portal_user(login_candidate, new_password, user_id, full_name)
+            login = login_candidate
+        except ValueError:
+            login = f"user{user_id}"
+            create_portal_user(login, new_password, user_id, full_name)
+
+    await update.message.reply_text(
+        "✅ Пароль для веб-кабинета сброшен.\n"
+        f"Логин: {login}\n"
+        f"Новый пароль: {new_password}",
+        reply_markup=get_main_keyboard()
+    )
+
+
 # ========== SCHEDULED TASKS ==========
 
 async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -648,3 +686,40 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=get_main_keyboard()
     )
     return ConversationHandler.END
+def generate_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+def sanitize_login(username: Optional[str], user_id: int) -> str:
+    if username:
+        candidate = re.sub(r'[^a-z0-9_]', '', username.lower())
+        if candidate:
+            return candidate
+    return f"user{user_id}"
+
+
+def build_portal_message(user, full_name: str) -> str:
+    existing = get_app_user_by_telegram_id(user.id)
+    if existing:
+        return (
+            "🔑 Доступ к веб-кабинету уже создан.\n"
+            f"Логин: {existing['login']}\n"
+            "Если забыли пароль, используйте команду /reset_password."
+        )
+
+    login = sanitize_login(user.username, user.id)
+    password = generate_password()
+    try:
+        create_portal_user(login, password, user.id, full_name)
+    except ValueError:
+        login = f"user{user.id}"
+        password = generate_password()
+        create_portal_user(login, password, user.id, full_name)
+
+    return (
+        "🎉 Создан доступ в веб-кабинет!\n"
+        f"Логин: {login}\n"
+        f"Пароль: {password}\n"
+        "Сохраните данные или сразу измените пароль в UI."
+    )

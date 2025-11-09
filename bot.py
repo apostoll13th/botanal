@@ -75,6 +75,7 @@ def setup_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("set_reminder", set_reminder_start))
     application.add_handler(CommandHandler("my_reminders", show_reminders))
     application.add_handler(CommandHandler("setname", set_username))
+    application.add_handler(CommandHandler("reset_password", reset_portal_password))
 
     # Обработчики для inline кнопок
     application.add_handler(CallbackQueryHandler(process_savings_callback, pattern="^add_to_goal_"))
