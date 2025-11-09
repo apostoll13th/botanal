@@ -15,7 +15,8 @@ from database import (
     check_budget_alerts, set_budget, get_budgets,
     add_savings_goal, get_savings_goals, update_savings_progress,
     add_reminder, get_reminders, delete_reminder,
-    save_user, get_user_name, get_all_users, get_detailed_monthly_expenses
+    save_user, get_user_name, get_all_users, get_detailed_monthly_expenses,
+    get_available_categories
 )
 from utils import (
     build_web_url, get_main_keyboard, is_bot_command, create_monthly_chart,
@@ -23,12 +24,17 @@ from utils import (
     format_reminders_report, format_detailed_monthly_report
 )
 from config import (
-    CATEGORIES, REMINDER_FREQUENCIES, PERIOD_LABEL_TO_CODE,
+    REMINDER_FREQUENCIES, PERIOD_LABEL_TO_CODE,
     CODE_TO_PERIOD_LABEL, EXPENSE_AMOUNT, EXPENSE_CATEGORY,
     BUDGET_AMOUNT, BUDGET_CATEGORY, SAVINGS_AMOUNT, SAVINGS_DESCRIPTION
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_dynamic_categories():
+    categories = get_available_categories()
+    return categories if categories else ["Прочее"]
 
 
 # ========== START AND WEB INTERFACE ==========
@@ -97,15 +103,17 @@ async def expense_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data['amount'] = amount
 
         # Создаем ИНЛАЙН-клавиатуру с категориями (работает в группах)
+        categories = get_dynamic_categories()
         keyboard = []
         row = []
-        for i, category in enumerate(CATEGORIES):
+        for i, category in enumerate(categories):
             row.append(InlineKeyboardButton(category, callback_data=f"category_{category}"))
-            if (i + 1) % 3 == 0 or i == len(CATEGORIES) - 1:
+            if (i + 1) % 3 == 0 or i == len(categories) - 1:
                 keyboard.append(row)
                 row = []
 
         reply_markup = InlineKeyboardMarkup(keyboard)
+        context.user_data['available_categories'] = categories
 
         await update.message.reply_text('Выберите категорию:', reply_markup=reply_markup)
         return EXPENSE_CATEGORY
@@ -116,7 +124,14 @@ async def expense_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def expense_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle expense category (text input - for backward compatibility)"""
-    category = update.message.text
+    category = update.message.text.strip()
+    categories = context.user_data.get('available_categories') or get_dynamic_categories()
+    if category not in categories:
+        await update.message.reply_text(
+            "Такой категории нет в справочнике. Пожалуйста, выберите одну из предложенных кнопок или добавьте категорию через веб-интерфейс."
+        )
+        return EXPENSE_CATEGORY
+
     user_id = update.effective_user.id
     amount = context.user_data['amount']
 
@@ -155,8 +170,14 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text("❌ Ошибка выбора категории")
         return ConversationHandler.END
 
+    categories = context.user_data.get('available_categories') or get_dynamic_categories()
+
     # Получаем выбранную категорию из callback_data
     category = query.data.replace("category_", "")
+    if category not in categories:
+        await query.edit_message_text("❌ Такая категория недоступна. Попробуйте снова, используя свежий список.")
+        return ConversationHandler.END
+
     user_id = update.effective_user.id
     amount = context.user_data.get('amount', 0)
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
 from db import get_db_connection
-from config import PERIOD_LABEL_TO_CODE, CODE_TO_PERIOD_LABEL, Config
+from config import PERIOD_LABEL_TO_CODE, CODE_TO_PERIOD_LABEL, Config, CATEGORIES
 
 logger = logging.getLogger(__name__)
 
@@ -528,3 +528,20 @@ def get_all_users() -> List[Dict]:
         return []
     finally:
         conn.close()
+# ========== CATEGORY OPERATIONS ==========
+
+def get_available_categories() -> List[str]:
+    """Return list of categories from DB or fallback to defaults"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM categories ORDER BY name")
+        rows = cursor.fetchall()
+        categories = [row["name"] for row in rows if row.get("name")]
+        if categories:
+            return categories
+    except Exception as e:
+        logger.warning(f"Error fetching categories from DB: {e}")
+    finally:
+        conn.close()
+    return CATEGORIES

@@ -586,10 +586,14 @@ func createSavingsGoalHandler(c *gin.Context) {
 		userName = "Пользователь"
 	}
 
-	var targetDate sql.NullString
+	var targetDate interface{}
 	if strings.TrimSpace(req.TargetDate) != "" {
-		targetDate.Valid = true
-		targetDate.String = req.TargetDate
+		parsed, err := time.Parse("2006-01-02", req.TargetDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректная дата (используйте формат YYYY-MM-DD)"})
+			return
+		}
+		targetDate = parsed
 	}
 
 	_, err = db.Exec(`
