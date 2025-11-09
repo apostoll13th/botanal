@@ -622,6 +622,18 @@ def create_portal_user(login: str, password: str, telegram_user_id: int, full_na
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # Синхронизируем таблицу users
+        user_display_name = full_name if full_name else "Пользователь"
+        cursor.execute(
+            """
+            INSERT INTO users (user_id, user_name, created_date)
+            VALUES (%s, %s, CURRENT_DATE)
+            ON CONFLICT (user_id) DO UPDATE SET user_name = EXCLUDED.user_name
+            """,
+            (telegram_user_id, user_display_name)
+        )
+
+        # Создаем app_users
         cursor.execute(
             """
             INSERT INTO app_users (login, password_hash, full_name, role, telegram_user_id)
@@ -630,8 +642,10 @@ def create_portal_user(login: str, password: str, telegram_user_id: int, full_na
             (login, password_hash, full_name or "", role, telegram_user_id),
         )
         conn.commit()
+        logger.info(f"Portal user created: login={login}, telegram_user_id={telegram_user_id}")
     except IntegrityError as exc:
         conn.rollback()
+        logger.error(f"Error creating portal user: {exc}")
         raise ValueError("Login already exists") from exc
     finally:
         conn.close()
@@ -647,15 +661,27 @@ def reset_app_user_password(telegram_user_id: int, new_password: str) -> Optiona
             UPDATE app_users
             SET password_hash = %s
             WHERE telegram_user_id = %s
-            RETURNING login
+            RETURNING login, full_name
             """,
             (password_hash, telegram_user_id),
         )
         result = cursor.fetchone()
         if result:
+            # Синхронизируем таблицу users при сбросе пароля
+            user_display_name = result['full_name'] if result.get('full_name') else "Пользователь"
+            cursor.execute(
+                """
+                INSERT INTO users (user_id, user_name, created_date)
+                VALUES (%s, %s, CURRENT_DATE)
+                ON CONFLICT (user_id) DO UPDATE SET user_name = EXCLUDED.user_name
+                """,
+                (telegram_user_id, user_display_name)
+            )
             conn.commit()
+            logger.info(f"Password reset for telegram_user_id={telegram_user_id}, login={result['login']}")
             return result["login"]
         conn.rollback()
+        logger.warning(f"No app_user found for telegram_user_id={telegram_user_id}")
         return None
     except psycopg2.Error as exc:
         conn.rollback()

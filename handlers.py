@@ -27,7 +27,8 @@ from database import (
 from utils import (
     build_web_url, get_main_keyboard, is_bot_command, create_monthly_chart,
     format_expense_report, format_budget_report, format_savings_goals_report,
-    format_reminders_report, format_detailed_monthly_report
+    format_reminders_report, format_detailed_monthly_report,
+    get_user_display_name
 )
 from config import (
     REMINDER_FREQUENCIES, PERIOD_LABEL_TO_CODE,
@@ -48,8 +49,9 @@ def get_dynamic_categories():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command"""
     user_id = update.effective_user.id
+    user = update.effective_user
 
-    full_name = update.effective_user.full_name or update.effective_user.first_name or update.effective_user.username or "Пользователь"
+    full_name = get_user_display_name(user)
     context.user_data['user_name'] = full_name
     save_user(user_id, full_name)
 
@@ -76,7 +78,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=inline_keyboard
     )
 
-    portal_message = build_portal_message(update.effective_user, full_name)
+    # Создаем или получаем доступ к порталу
+    portal_message = build_portal_message(user, full_name)
     await update.message.reply_text(portal_message, reply_markup=get_main_keyboard())
 
 
@@ -589,15 +592,23 @@ async def reset_portal_password(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = user.id
     new_password = generate_password()
 
+    # Пытаемся сбросить пароль
     login = reset_app_user_password(user_id, new_password)
+
     if not login:
-        # create a new account automatically
-        full_name = user.full_name or user.first_name or user.username or "Пользователь"
+        # Аккаунт не найден - создаем автоматически
+        full_name = get_user_display_name(user)
+
+        # Сначала убедимся что users существует
+        save_user(user_id, full_name)
+
+        # Теперь создаем app_user
         login_candidate = sanitize_login(user.username, user_id)
         try:
             create_portal_user(login_candidate, new_password, user_id, full_name)
             login = login_candidate
         except ValueError:
+            # Логин занят, используем запасной вариант
             login = f"user{user_id}"
             create_portal_user(login, new_password, user_id, full_name)
 
@@ -700,6 +711,7 @@ def sanitize_login(username: Optional[str], user_id: int) -> str:
 
 
 def build_portal_message(user, full_name: str) -> str:
+    """Build message about portal access (create or show existing)"""
     existing = get_app_user_by_telegram_id(user.id)
     if existing:
         return (
@@ -708,11 +720,15 @@ def build_portal_message(user, full_name: str) -> str:
             "Если забыли пароль, используйте команду /reset_password."
         )
 
+    # Создаем новый аккаунт
     login = sanitize_login(user.username, user.id)
     password = generate_password()
+
     try:
+        # create_portal_user автоматически синхронизирует таблицу users
         create_portal_user(login, password, user.id, full_name)
     except ValueError:
+        # Логин занят, используем запасной вариант
         login = f"user{user.id}"
         password = generate_password()
         create_portal_user(login, password, user.id, full_name)

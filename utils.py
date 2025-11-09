@@ -19,6 +19,26 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
+
+def get_user_display_name(user) -> str:
+    """
+    Get display name for a Telegram user.
+    Tries full_name, then first_name, then username, finally returns 'Пользователь'.
+
+    Args:
+        user: Telegram User object
+
+    Returns:
+        Display name string
+    """
+    if hasattr(user, 'full_name') and user.full_name:
+        return user.full_name
+    if hasattr(user, 'first_name') and user.first_name:
+        return user.first_name
+    if hasattr(user, 'username') and user.username:
+        return user.username
+    return "Пользователь"
+
 # Установка русских шрифтов для matplotlib
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 matplotlib.rcParams['font.size'] = 12
