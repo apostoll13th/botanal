@@ -1,24 +1,38 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from decimal import Decimal
 import os
 import sys
 
 # Добавляем путь к родительской директории для импорта модулей
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from db import get_db_connection, wait_for_db
+from db_schema import init_db, update_database_structure
+from database_migrations import check_and_update_database
 
 app = Flask(__name__)
 CORS(app)  # Разрешаем CORS для всех доменов
 
-# Путь к базе данных
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'expenses.db')
+try:
+    wait_for_db()
+    init_db()
+    update_database_structure()
+    check_and_update_database()
+except Exception as exc:
+    app.logger.warning("Не удалось применить миграции при старте backend: %s", exc)
 
-def get_db_connection():
-    """Подключение к базе данных"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+
+def to_float(value):
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def format_date_value(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -38,20 +52,20 @@ def get_expenses(user_id):
         category = request.args.get('category')
         
         # Базовый запрос
-        query = 'SELECT * FROM expenses WHERE user_id = ?'
+        query = 'SELECT * FROM expenses WHERE user_id = %s'
         params = [user_id]
         
         # Добавляем фильтры
         if start_date:
-            query += ' AND date >= ?'
+            query += ' AND date >= %s'
             params.append(start_date)
         
         if end_date:
-            query += ' AND date <= ?'
+            query += ' AND date <= %s'
             params.append(end_date)
         
         if category:
-            query += ' AND category = ?'
+            query += ' AND category = %s'
             params.append(category)
         
         query += ' ORDER BY date DESC'
@@ -64,9 +78,9 @@ def get_expenses(user_id):
         for expense in expenses:
             result.append({
                 'id': expense['id'],
-                'amount': expense['amount'],
+                'amount': to_float(expense['amount']),
                 'category': expense['category'],
-                'date': expense['date'],
+                'date': format_date_value(expense['date']),
                 'description': expense['description'] if 'description' in expense.keys() else None,
                 'user_name': expense['user_name'] if 'user_name' in expense.keys() else None
             })
@@ -91,7 +105,7 @@ def get_expenses_summary(user_id):
         cursor.execute('''
             SELECT category, SUM(amount) as total
             FROM expenses
-            WHERE user_id = ? AND date >= ?
+            WHERE user_id = %s AND date >= %s
             GROUP BY category
             ORDER BY total DESC
         ''', (user_id, date_30_days_ago))
@@ -104,17 +118,20 @@ def get_expenses_summary(user_id):
         }
         
         for row in summary:
+            amount = to_float(row['total'])
+            if amount is None:
+                amount = 0
             result['categories'].append({
                 'category': row['category'],
-                'amount': row['total']
+                'amount': amount
             })
-            result['total'] += row['total']
+            result['total'] += amount
         
         # Добавляем расходы по дням для графика динамики
         cursor.execute('''
             SELECT date, SUM(amount) as daily_total
             FROM expenses
-            WHERE user_id = ? AND date >= ?
+            WHERE user_id = %s AND date >= %s
             GROUP BY date
             ORDER BY date
         ''', (user_id, date_30_days_ago))
@@ -123,9 +140,12 @@ def get_expenses_summary(user_id):
         
         result['daily'] = []
         for row in daily_expenses:
+            daily_total = to_float(row['daily_total'])
+            if daily_total is None:
+                daily_total = 0
             result['daily'].append({
-                'date': row['date'],
-                'amount': row['daily_total']
+                'date': format_date_value(row['date']),
+                'amount': daily_total
             })
         
         conn.close()
@@ -143,7 +163,7 @@ def get_budgets(user_id):
         
         cursor.execute('''
             SELECT * FROM budgets
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY category
         ''', (user_id,))
         
@@ -165,20 +185,21 @@ def get_budgets(user_id):
             cursor.execute('''
                 SELECT SUM(amount) as spent
                 FROM expenses
-                WHERE user_id = ? AND category = ? AND date >= ?
+                WHERE user_id = %s AND category = %s AND date >= %s
             ''', (user_id, budget['category'], period_start.strftime('%Y-%m-%d')))
             
             spent_row = cursor.fetchone()
-            spent = spent_row['spent'] if spent_row['spent'] else 0
+            spent = to_float(spent_row['spent']) if spent_row and spent_row['spent'] else 0
+            amount_value = to_float(budget['amount']) if budget['amount'] is not None else 0
             
             result.append({
                 'id': budget['id'],
                 'category': budget['category'],
-                'amount': budget['amount'],
+                'amount': amount_value,
                 'period': budget['period'],
                 'spent': spent,
-                'remaining': budget['amount'] - spent,
-                'percentage': round((spent / budget['amount']) * 100, 1) if budget['amount'] > 0 else 0
+                'remaining': amount_value - spent,
+                'percentage': round((spent / amount_value) * 100, 1) if amount_value > 0 else 0
             })
         
         conn.close()
@@ -196,7 +217,7 @@ def get_goals(user_id):
         
         cursor.execute('''
             SELECT * FROM savings_goals
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY created_date DESC
         ''', (user_id,))
         
@@ -204,16 +225,18 @@ def get_goals(user_id):
         
         result = []
         for goal in goals:
+            target_amount = to_float(goal['target_amount']) if goal['target_amount'] is not None else 0
+            current_amount = to_float(goal['current_amount']) if goal['current_amount'] is not None else 0
             goal_name = goal['goal_name'] if 'goal_name' in goal.keys() else goal['description']
             result.append({
                 'id': goal['id'],
                 'name': goal_name,
                 'description': goal['description'],
-                'target_amount': goal['target_amount'],
-                'current_amount': goal['current_amount'],
-                'target_date': goal['target_date'] if 'target_date' in goal.keys() else None,
-                'created_date': goal['created_date'],
-                'percentage': round((goal['current_amount'] / goal['target_amount']) * 100, 1) if goal['target_amount'] > 0 else 0
+                'target_amount': target_amount,
+                'current_amount': current_amount,
+                'target_date': format_date_value(goal['target_date']) if 'target_date' in goal.keys() else None,
+                'created_date': format_date_value(goal['created_date']),
+                'percentage': round((current_amount / target_amount) * 100, 1) if target_amount > 0 else 0
             })
         
         conn.close()
@@ -229,14 +252,14 @@ def get_user_info(user_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT * FROM users WHERE user_id = %s', (user_id,))
         user = cursor.fetchone()
         
         if user:
             result = {
                 'user_id': user['user_id'],
                 'user_name': user['user_name'],
-                'created_date': user['created_date']
+                'created_date': format_date_value(user['created_date'])
             }
         else:
             result = {

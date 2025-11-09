@@ -1,8 +1,9 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
-from datetime import datetime, timedelta
-import sqlite3
+from datetime import datetime, timedelta, time
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import pandas as pd
@@ -10,9 +11,10 @@ import os
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
 from database_migrations import check_and_update_database
+from db import get_db_connection, wait_for_db
+from db_schema import init_db, update_database_structure
 
 # Установка русских шрифтов
-import matplotlib
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 matplotlib.rcParams['font.size'] = 12
 
@@ -21,6 +23,15 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "expense_bot.log")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "http://localhost:8080")
+
+if not TOKEN:
+    raise SystemExit("TELEGRAM_BOT_TOKEN не задан. Проверьте .env")
+
+
+def build_web_url(user_id: int) -> str:
+    separator = '&' if '?' in WEB_APP_URL else '?'
+    return f"{WEB_APP_URL}{separator}user_id={user_id}"
 
 # Настройка логирования
 log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -51,87 +62,56 @@ CATEGORIES = ['Продукты', 'Транспорт', 'Развлечения'
 # Частота напоминаний
 REMINDER_FREQUENCIES = ['Ежедневно', 'Еженедельно', 'Ежемесячно']
 
+PERIOD_LABEL_TO_CODE = {
+    'Ежедневно': 'daily',
+    'Еженедельно': 'weekly',
+    'Ежемесячно': 'monthly'
+}
+CODE_TO_PERIOD_LABEL = {code: label for label, code in PERIOD_LABEL_TO_CODE.items()}
+
 # Функция для получения основного меню (чтобы не дублировать код)
+
+def is_bot_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Проверяет, является ли сообщение командой для бота"""
+    message = update.message
+    
+    if not message or not message.text:
+        return False
+    
+    # Если это приватный чат - обрабатываем все сообщения
+    if message.chat.type == 'private':
+        return True
+    
+    # В группе обрабатываем только:
+    # 1. Команды (начинающиеся с /)
+    # 2. Ответы на сообщения бота
+    # 3. Сообщения, упоминающие бота
+    
+    text = message.text
+    
+    # Команды
+    if text.startswith('/'):
+        return True
+    
+    # Ответ на сообщение бота
+    if message.reply_to_message and message.reply_to_message.from_user.is_bot:
+        return True
+    
+    # Упоминание бота по имени
+    bot_username = context.bot.username
+    if bot_username and f"@{bot_username}" in text:
+        return True
+    
+    return False
+
 def get_main_keyboard():
     return ReplyKeyboardMarkup([
         ['/add_expense', '/daily_report'],
         ['/weekly_report', '/monthly_report'],
-        ['/set_budget', '/savings_goals'],
-        ['/set_reminder', '/my_reminders'],
-        ['/setname']
+        ['/detailed_report', '/set_budget'],
+        
+        ['/my_reminders', '/setname'], ['/web']
     ], resize_keyboard=True)
-
-# Подключение к базе данных
-def get_db_connection():
-    conn = sqlite3.connect('expenses.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-# Создание таблиц если они не существуют
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Таблица расходов
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT NOT NULL,
-        date TEXT NOT NULL,
-        user_name TEXT
-    )
-    ''')
-    
-    # Таблица бюджетов
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS budgets (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        category TEXT NOT NULL,
-        amount REAL NOT NULL,
-        period TEXT NOT NULL,
-        start_date TEXT NOT NULL
-    )
-    ''')
-    
-    # Таблица целей экономии
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS savings_goals (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        description TEXT NOT NULL,
-        target_amount REAL NOT NULL,
-        current_amount REAL DEFAULT 0,
-        target_date TEXT,
-        created_date TEXT NOT NULL
-    )
-    ''')
-    
-    # Таблица напоминаний
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS reminders (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        message TEXT NOT NULL,
-        frequency TEXT NOT NULL,
-        next_reminder_date TEXT NOT NULL,
-        created_date TEXT NOT NULL
-    )
-    ''')
-    
-    # Таблица пользователей
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        user_name TEXT NOT NULL,
-        created_date TEXT NOT NULL
-    )
-    ''')
-    
-    conn.commit()
-    conn.close()
 
 # Добавление нового расхода
 def add_expense(user_id, amount, category):
@@ -140,12 +120,12 @@ def add_expense(user_id, amount, category):
     today = datetime.now().strftime('%Y-%m-%d')
     
     # Получаем имя пользователя из базы
-    cursor.execute('SELECT user_name FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT user_name FROM users WHERE user_id = %s', (user_id,))
     result = cursor.fetchone()
     user_name = result['user_name'] if result else "Пользователь"
     
     cursor.execute(
-        'INSERT INTO expenses (user_id, amount, category, date, user_name) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO expenses (user_id, amount, category, date, user_name) VALUES (%s, %s, %s, %s, %s)',
         (user_id, amount, category, today, user_name)
     )
     
@@ -153,50 +133,23 @@ def add_expense(user_id, amount, category):
     conn.close()
 
 # Функция для обновления структуры базы данных
-def update_database_structure():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Проверяем, существует ли колонка user_name в таблице expenses
-    try:
-        cursor.execute('SELECT user_name FROM expenses LIMIT 1')
-        logging.info("Колонка user_name уже существует в таблице expenses")
-    except sqlite3.OperationalError:
-        # Колонка не существует, добавляем её
-        logging.info("Добавление колонки user_name в таблицу expenses")
-        cursor.execute('ALTER TABLE expenses ADD COLUMN user_name TEXT')
-        conn.commit()
-    
-    conn.close()
-
 # Исправленная функция получения ежедневных расходов
 def get_daily_expenses(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     today = datetime.now().strftime('%Y-%m-%d')
     
-    # Проверяем, существует ли колонка user_name
-    try:
-        # Получаем все расходы за сегодня (независимо от пользователя)
-        cursor.execute(
-            '''SELECT category, SUM(amount) as total, user_name
-               FROM expenses 
-               WHERE date = ? 
-               GROUP BY category''',
-            (today,)
-        )
-    except sqlite3.OperationalError:
-        # Если колонки user_name нет, используем запрос без неё
-        cursor.execute(
-            '''SELECT category, SUM(amount) as total
-               FROM expenses 
-               WHERE date = ? 
-               GROUP BY category''',
-            (today,)
-        )
+    cursor.execute(
+        '''SELECT category, SUM(amount) as total
+           FROM expenses 
+           WHERE date = %s AND user_id = %s
+           GROUP BY category
+           ORDER BY category''',
+        (today, user_id)
+    )
     
     results = cursor.fetchall()
-    total = sum(row['total'] for row in results)
+    total = sum(float(row['total']) for row in results if row['total'])
     conn.close()
     return results, total
 
@@ -210,13 +163,13 @@ def get_weekly_expenses(user_id):
     cursor.execute(
         '''SELECT date, SUM(amount) as total 
            FROM expenses 
-           WHERE user_id = ? AND date BETWEEN ? AND ? 
+           WHERE user_id = %s AND date BETWEEN %s AND %s 
            GROUP BY date
            ORDER BY date''',
         (user_id, week_ago, today)
     )
     results = cursor.fetchall()
-    total = sum(row['total'] for row in results)
+    total = sum(float(row['total']) for row in results if row['total'])
     conn.close()
     return results, total
 
@@ -235,7 +188,7 @@ def get_monthly_expenses(user_id):
         cursor.execute(
             '''SELECT category, SUM(amount) as total 
                FROM expenses 
-               WHERE user_id = ? AND date BETWEEN ? AND ? 
+               WHERE user_id = %s AND date BETWEEN %s AND %s 
                GROUP BY category
                ORDER BY category''',
             (user_id, month_ago, today)
@@ -264,11 +217,11 @@ def create_monthly_chart(user_id):
         logging.warning("Нет данных о расходах для создания графика")
         return None
     
-    # Преобразуем sqlite3.Row в словари для корректной работы с pandas
+    # Преобразуем строки БД в словари для корректной работы с pandas
     expenses_dict = []
     for expense in expenses:
-        # Преобразуем Row в словарь
-        expense_dict = {'category': expense['category'], 'total': expense['total']}
+        total_value = float(expense['total']) if expense['total'] is not None else 0
+        expense_dict = {'category': expense['category'], 'total': total_value}
         expenses_dict.append(expense_dict)
     
     logging.info(f"Преобразованные данные для графика: {expenses_dict}")
@@ -290,7 +243,7 @@ def create_monthly_chart(user_id):
     plt.figure(figsize=(10, 6))
     plt.pie(df['total'], labels=df['category'], autopct='%1.1f%%', startangle=90)
     plt.axis('equal')  # Равные пропорции для круговой диаграммы
-    plt.title('Расходы за месяц по категориям')
+    plt.title('Общие расходы семьи за месяц по категориям')
     
     # Сохраняем график в буфер
     buf = io.BytesIO()
@@ -301,29 +254,34 @@ def create_monthly_chart(user_id):
     return buf
 
 # Функции для работы с бюджетами
+def normalize_period_value(period):
+    return PERIOD_LABEL_TO_CODE.get(period, period)
+
+
 def set_budget(user_id, category, amount, period):
     conn = get_db_connection()
     cursor = conn.cursor()
     start_date = datetime.now().strftime('%Y-%m-%d')
+    period_code = normalize_period_value(period)
     
     # Проверяем, существует ли уже бюджет для этой категории и периода
     cursor.execute(
-        'SELECT id FROM budgets WHERE user_id = ? AND category = ? AND period = ?',
-        (user_id, category, period)
+        'SELECT id FROM budgets WHERE user_id = %s AND category = %s AND period = %s',
+        (user_id, category, period_code)
     )
     existing_budget = cursor.fetchone()
     
     if existing_budget:
         # Обновляем существующий бюджет
         cursor.execute(
-            'UPDATE budgets SET amount = ?, start_date = ? WHERE id = ?',
+            'UPDATE budgets SET amount = %s, start_date = %s WHERE id = %s',
             (amount, start_date, existing_budget['id'])
         )
     else:
         # Создаем новый бюджет
         cursor.execute(
-            'INSERT INTO budgets (user_id, category, amount, period, start_date) VALUES (?, ?, ?, ?, ?)',
-            (user_id, category, amount, period, start_date)
+            'INSERT INTO budgets (user_id, category, amount, period, start_date) VALUES (%s, %s, %s, %s, %s)',
+            (user_id, category, amount, period_code, start_date)
         )
     
     conn.commit()
@@ -333,7 +291,7 @@ def get_budgets(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'SELECT category, amount, period FROM budgets WHERE user_id = ?',
+        'SELECT category, amount, period FROM budgets WHERE user_id = %s',
         (user_id,)
     )
     results = cursor.fetchall()
@@ -345,18 +303,21 @@ def check_budget_status(user_id, category, period):
     cursor = conn.cursor()
     
     today = datetime.now()
+    period_code = normalize_period_value(period)
     
-    if period == 'Ежедневно':
+    if period_code == 'daily':
         start_date = today.strftime('%Y-%m-%d')
-    elif period == 'Еженедельно':
+    elif period_code == 'weekly':
         start_date = (today - timedelta(days=today.weekday())).strftime('%Y-%m-%d')
-    elif period == 'Ежемесячно':
+    elif period_code == 'monthly':
         start_date = today.replace(day=1).strftime('%Y-%m-%d')
+    else:
+        start_date = today.strftime('%Y-%m-%d')
     
     # Получаем бюджет для данной категории
     cursor.execute(
-        'SELECT amount FROM budgets WHERE user_id = ? AND category = ? AND period = ?',
-        (user_id, category, period)
+        'SELECT amount FROM budgets WHERE user_id = %s AND category = %s AND period = %s',
+        (user_id, category, period_code)
     )
     budget = cursor.fetchone()
     
@@ -366,13 +327,14 @@ def check_budget_status(user_id, category, period):
     
     # Считаем расходы по категории за период
     cursor.execute(
-        'SELECT SUM(amount) as spent FROM expenses WHERE user_id = ? AND category = ? AND date >= ?',
+        'SELECT SUM(amount) as spent FROM expenses WHERE user_id = %s AND category = %s AND date >= %s',
         (user_id, category, start_date)
     )
-    spent = cursor.fetchone()['spent'] or 0
+    spent_row = cursor.fetchone()
+    spent = float(spent_row['spent']) if spent_row and spent_row['spent'] else 0
     
     # Рассчитываем процент использования бюджета
-    budget_amount = budget['amount']
+    budget_amount = float(budget['amount'])
     percentage = (spent / budget_amount) * 100 if budget_amount > 0 else 0
     
     conn.close()
@@ -385,7 +347,7 @@ def add_savings_goal(user_id, description, target_amount, target_date=None):
     created_date = datetime.now().strftime('%Y-%m-%d')
     
     cursor.execute(
-        'INSERT INTO savings_goals (user_id, description, target_amount, target_date, created_date) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO savings_goals (user_id, description, target_amount, target_date, created_date) VALUES (%s, %s, %s, %s, %s)',
         (user_id, description, target_amount, target_date, created_date)
     )
     
@@ -396,7 +358,7 @@ def get_savings_goals(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'SELECT id, description, target_amount, current_amount, target_date FROM savings_goals WHERE user_id = ?',
+        'SELECT id, description, target_amount, current_amount, target_date FROM savings_goals WHERE user_id = %s',
         (user_id,)
     )
     results = cursor.fetchall()
@@ -409,7 +371,7 @@ def update_savings_progress(user_id, goal_id, amount):
     
     # Обновляем текущую сумму цели
     cursor.execute(
-        'UPDATE savings_goals SET current_amount = current_amount + ? WHERE id = ? AND user_id = ?',
+        'UPDATE savings_goals SET current_amount = current_amount + %s WHERE id = %s AND user_id = %s',
         (amount, goal_id, user_id)
     )
     
@@ -424,7 +386,7 @@ def add_reminder(user_id, message, frequency):
     next_reminder_date = created_date
     
     cursor.execute(
-        'INSERT INTO reminders (user_id, message, frequency, next_reminder_date, created_date) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO reminders (user_id, message, frequency, next_reminder_date, created_date) VALUES (%s, %s, %s, %s, %s)',
         (user_id, message, frequency, next_reminder_date, created_date)
     )
     
@@ -435,7 +397,7 @@ def get_reminders(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'SELECT id, message, frequency, next_reminder_date FROM reminders WHERE user_id = ?',
+        'SELECT id, message, frequency, next_reminder_date FROM reminders WHERE user_id = %s',
         (user_id,)
     )
     results = cursor.fetchall()
@@ -447,7 +409,7 @@ def delete_reminder(user_id, reminder_id):
     cursor = conn.cursor()
     
     cursor.execute(
-        'DELETE FROM reminders WHERE id = ? AND user_id = ?',
+        'DELETE FROM reminders WHERE id = %s AND user_id = %s',
         (reminder_id, user_id)
     )
     
@@ -460,7 +422,7 @@ def get_todays_reminders():
     today = datetime.now().strftime('%Y-%m-%d')
     
     cursor.execute(
-        'SELECT user_id, id, message, frequency FROM reminders WHERE next_reminder_date <= ?',
+        'SELECT user_id, id, message, frequency FROM reminders WHERE next_reminder_date <= %s',
         (today,)
     )
     results = cursor.fetchall()
@@ -478,7 +440,7 @@ def get_todays_reminders():
             next_date = next_date + timedelta(days=30)
         
         cursor.execute(
-            'UPDATE reminders SET next_reminder_date = ? WHERE id = ?',
+            'UPDATE reminders SET next_reminder_date = %s WHERE id = %s',
             (next_date.strftime('%Y-%m-%d'), reminder['id'])
         )
     
@@ -488,7 +450,7 @@ def get_todays_reminders():
 
 # Функция проверки превышения бюджета
 def check_budget_alerts(user_id, category, amount):
-    periods = ['Ежедневно', 'Еженедельно', 'Ежемесячно']
+    periods = ['daily', 'weekly', 'monthly']
     alerts = []
     
     for period in periods:
@@ -496,7 +458,7 @@ def check_budget_alerts(user_id, category, amount):
         
         if budget_amount and percentage > 80:
             alerts.append({
-                'period': period,
+                'period': CODE_TO_PERIOD_LABEL.get(period, period),
                 'budget': budget_amount,
                 'spent': spent,
                 'percentage': percentage
@@ -509,7 +471,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     
     # Создаем инлайн-кнопку для веб-интерфейса
-    web_url = f"http://localhost:3000/?user_id={user_id}"
+    web_url = build_web_url(user_id)
     inline_keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🌐 Открыть личный кабинет", url=web_url)]
     ])
@@ -534,7 +496,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Команда для открытия веб-интерфейса
 async def web_interface(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    web_url = f"http://localhost:3000/?user_id={user_id}"
+    web_url = build_web_url(user_id)
     
     inline_keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🌐 Открыть личный кабинет", url=web_url)]
@@ -608,6 +570,17 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     await query.answer()
     
+    # Проверяем на отмену
+    if query.data == "category_cancel":
+        await query.edit_message_text("❌ Добавление расхода отменено")
+        context.user_data.pop('amount', None)
+        return ConversationHandler.END
+    
+    # Проверяем корректность callback_data
+    if not query.data.startswith("category_"):
+        await query.edit_message_text("❌ Ошибка выбора категории")
+        return ConversationHandler.END
+    
     # Получаем выбранную категорию из callback_data
     category = query.data.replace("category_", "")
     user_id = update.effective_user.id
@@ -620,7 +593,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # Пытаемся получить имя из базы данных
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT user_name FROM users WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT user_name FROM users WHERE user_id = %s', (user_id,))
         result = cursor.fetchone()
         conn.close()
         
@@ -634,16 +607,8 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     cursor = conn.cursor()
     today = datetime.now().strftime('%Y-%m-%d')
     
-    # Добавляем поле user_name в таблицу расходов если его еще нет
-    try:
-        cursor.execute('SELECT user_name FROM expenses LIMIT 1')
-    except sqlite3.OperationalError:
-        # Поле не существует, добавляем его
-        cursor.execute('ALTER TABLE expenses ADD COLUMN user_name TEXT')
-        conn.commit()
-    
     cursor.execute(
-        'INSERT INTO expenses (user_id, amount, category, date, user_name) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO expenses (user_id, amount, category, date, user_name) VALUES (%s, %s, %s, %s, %s)',
         (user_id, amount, category, today, user_name)
     )
     conn.commit()
@@ -679,7 +644,8 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     report = "Расходы за сегодня:\n\n"
     for expense in expenses:
-        report += f"{expense['category']}: {expense['total']} руб."
+        total_value = float(expense['total']) if expense['total'] else 0
+        report += f"{expense['category']}: {total_value:.2f} руб."
         
         # Проверяем наличие ключа user_name перед использованием
         if 'user_name' in expense and expense['user_name']:
@@ -687,7 +653,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         
         report += "\n"
     
-    report += f"\nОбщая сумма: {total} руб."
+    report += f"\nОбщая сумма: {total:.2f} руб."
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
 # Еженедельный отчет
@@ -701,9 +667,10 @@ async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     report = "Расходы за последние 7 дней:\n\n"
     for expense in expenses:
-        report += f"{expense['date']}: {expense['total']} руб.\n"
+        total_value = float(expense['total']) if expense['total'] else 0
+        report += f"{expense['date']}: {total_value:.2f} руб.\n"
     
-    report += f"\nОбщая сумма за неделю: {total} руб."
+    report += f"\nОбщая сумма за неделю: {total:.2f} руб."
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
 # Ежемесячный отчет
@@ -717,9 +684,10 @@ async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     report = "Расходы за последние 30 дней:\n\n"
     for expense in expenses:
-        report += f"{expense['category']}: {expense['total']} руб.\n"
+        total_value = float(expense['total']) if expense['total'] else 0
+        report += f"{expense['category']}: {total_value:.2f} руб.\n"
     
-    report += f"\nОбщая сумма за месяц: {total} руб."
+    report += f"\nОбщая сумма за месяц: {total:.2f} руб."
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
     
     # Отправляем график расходов
@@ -741,10 +709,12 @@ async def set_budget_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return BUDGET_AMOUNT
 
 async def budget_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    period = update.message.text
-    context.user_data['budget_period'] = period
+    period_label = update.message.text
+    period_code = normalize_period_value(period_label)
+    context.user_data['budget_period'] = period_code
+    context.user_data['budget_period_label'] = CODE_TO_PERIOD_LABEL.get(period_code, period_label)
     
-    await update.message.reply_text(f'Выбран период: {period}\nВведите сумму бюджета:')
+    await update.message.reply_text(f'Выбран период: {period_label}\nВведите сумму бюджета:')
     return BUDGET_CATEGORY
 
 async def budget_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -768,12 +738,13 @@ async def save_budget(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     user_id = update.effective_user.id
     amount = context.user_data['budget_amount']
     period = context.user_data['budget_period']
+    period_label = context.user_data.get('budget_period_label', CODE_TO_PERIOD_LABEL.get(period, period))
     
     set_budget(user_id, category, amount, period)
     
     # Возвращаем основное меню
     await update.message.reply_text(
-        f'Бюджет установлен: {amount} руб. для категории "{category}" ({period})',
+        f'Бюджет установлен: {amount} руб. для категории "{category}" ({period_label})',
         reply_markup=get_main_keyboard()
     )
     
@@ -791,12 +762,13 @@ async def show_budgets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     for budget in budgets:
         category = budget['category']
-        amount = budget['amount']
+        amount = float(budget['amount']) if budget['amount'] is not None else 0
         period = budget['period']
+        period_label = CODE_TO_PERIOD_LABEL.get(period, period)
         
         _, spent, percentage = check_budget_status(user_id, category, period)
         
-        report += f"🔹 {category} ({period}): {spent:.2f} / {amount:.2f} руб. ({percentage:.1f}%)\n"
+        report += f"🔹 {category} ({period_label}): {spent:.2f} / {amount:.2f} руб. ({percentage:.1f}%)\n"
     
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
@@ -979,9 +951,10 @@ async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE) -> None:
         if expenses:
             report = "📊 Ежедневный отчет о расходах:\n\n"
             for expense in expenses:
-                report += f"{expense['category']}: {expense['total']} руб.\n"
+                total_value = float(expense['total']) if expense['total'] else 0
+                report += f"{expense['category']}: {total_value:.2f} руб.\n"
             
-            report += f"\nОбщая сумма за сегодня: {total} руб."
+            report += f"\nОбщая сумма за сегодня: {total:.2f} руб."
             
             try:
                 await context.bot.send_message(
@@ -1006,12 +979,26 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # Обработчик общих сообщений
 async def handle_general_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик общих сообщений - только для команд боту"""
+    
+    # Проверяем, является ли это командой для бота
+    if not is_bot_command(update, context):
+        return  # Игнорируем сообщение
+    
+    # Проверяем состояние пользователя
+    user_data = context.user_data
+    
     # Если ожидается пополнение цели экономии
-    if 'current_goal_id' in context.user_data:
+    if 'current_goal_id' in user_data:
         await add_to_savings_goal(update, context)
+        return
+    
     # Если ожидается ввод данных для напоминания
-    elif 'reminder_stage' in context.user_data:
+    elif 'reminder_stage' in user_data:
         await process_reminder(update, context)
+        return
+    
+    # Если ничего не ожидается, игнорируем сообщение
 
 # Функция отмены диалога
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1027,10 +1014,17 @@ def create_expense_handler():
         entry_points=[CommandHandler("add_expense", add_expense_start)],
         states={
             EXPENSE_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, expense_amount)],
-            EXPENSE_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, expense_category)],
+            EXPENSE_CATEGORY: [
+                CallbackQueryHandler(category_callback, pattern="^category_")
+            ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_conversation)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            CommandHandler("start", cancel_conversation)
+        ],
         allow_reentry=True,
+        per_chat=True,
+        per_user=True
     )
 
 # Добавляем функцию для установки имени пользователя
@@ -1055,21 +1049,21 @@ async def set_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Создаем таблицу пользователей, если она не существует
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
+        user_id BIGINT PRIMARY KEY,
         user_name TEXT NOT NULL,
-        created_date TEXT NOT NULL
+        created_date DATE NOT NULL
     )
     ''')
     
     # Проверяем, существует ли уже запись для этого пользователя
-    cursor.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT user_id FROM users WHERE user_id = %s', (user_id,))
     exists = cursor.fetchone()
     
     if exists:
-        cursor.execute('UPDATE users SET user_name = ? WHERE user_id = ?', (user_name, user_id))
+        cursor.execute('UPDATE users SET user_name = %s WHERE user_id = %s', (user_name, user_id))
     else:
         today = datetime.now().strftime('%Y-%m-%d')
-        cursor.execute('INSERT INTO users (user_id, user_name, created_date) VALUES (?, ?, ?)', 
+        cursor.execute('INSERT INTO users (user_id, user_name, created_date) VALUES (%s, %s, %s)', 
                       (user_id, user_name, today))
     
     conn.commit()
@@ -1081,8 +1075,67 @@ async def set_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 # Основная функция
+
+# Функция для детального отчета по пользователям
+def get_detailed_monthly_expenses():
+    """Получить детальный отчет с разбивкой по пользователям"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    today = datetime.now()
+    month_ago = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+    today = today.strftime('%Y-%m-%d')
+    
+    cursor.execute(
+        '''SELECT user_name, category, SUM(amount) as total 
+           FROM expenses 
+           WHERE date BETWEEN %s AND %s 
+           GROUP BY user_name, category
+           ORDER BY user_name, category''',
+        (month_ago, today)
+    )
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+async def detailed_monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Детальный отчет по пользователям"""
+    expenses = get_detailed_monthly_expenses()
+    
+    if not expenses:
+        await update.message.reply_text('За последний месяц нет расходов.', reply_markup=get_main_keyboard())
+        return
+    
+    report = "📊 Детальный отчет по пользователям за 30 дней:\n\n"
+    
+    current_user = None
+    user_total = 0
+    grand_total = 0
+    
+    for expense in expenses:
+        user_name = expense['user_name'] if expense['user_name'] else "Неизвестный"
+        amount = float(expense['total']) if expense['total'] else 0
+        
+        if current_user != user_name:
+            if current_user is not None:
+                report += f"  💳 Итого {current_user}: {user_total:.2f} руб.\n\n"
+            current_user = user_name
+            user_total = 0
+            report += f"👤 {user_name}:\n"
+        
+        report += f"  • {expense['category']}: {amount:.2f} руб.\n"
+        user_total += amount
+        grand_total += amount
+    
+    if current_user is not None:
+        report += f"  💳 Итого {current_user}: {user_total:.2f} руб.\n\n"
+    
+    report += f"💰 Общая сумма семьи: {grand_total:.2f} руб."
+    
+    await update.message.reply_text(report, reply_markup=get_main_keyboard())
+
 def main() -> None:
-    # Инициализация базы данных
+    # Ждем готовности базы и инициализируем структуру
+    wait_for_db()
     init_db()
     
     # Применение миграций базы данных
@@ -1100,8 +1153,8 @@ def main() -> None:
     try:
         job_queue = application.job_queue
         # Если job_queue доступен, настраиваем задания
-        job_queue.run_daily(check_reminders, time=datetime.time(9, 0))
-        job_queue.run_daily(send_daily_reports, time=datetime.time(21, 0))
+        job_queue.run_daily(check_reminders, time=time(hour=9, minute=0))
+        job_queue.run_daily(send_daily_reports, time=time(hour=21, minute=0))
         logging.info("Очередь заданий успешно настроена.")
     except Exception as e:
         logging.warning(f"Невозможно настроить очередь заданий: {e}")
@@ -1159,6 +1212,7 @@ def main() -> None:
     
     # Добавляем обработчик для установки имени пользователя
     application.add_handler(CommandHandler("setname", set_username))
+    application.add_handler(CommandHandler("detailed_report", detailed_monthly_report))
     
     # Запуск бота
     application.run_polling()

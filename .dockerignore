@@ -1,0 +1,8 @@
+.git
+__pycache__/
+*.pyc
+venv/
+.venv/
+expenses.db
+.last_requirements_hash
+.env

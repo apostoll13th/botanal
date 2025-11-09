@@ -1,5 +1,5 @@
 // Конфигурация
-const API_URL = 'http://localhost:5000/api';
+const API_URL = window.APP_CONFIG?.API_URL || `${window.location.origin}/api`;
 let userId = null;
 let categoryChart = null;
 let dailyChart = null;
@@ -15,7 +15,7 @@ async function init() {
     userId = getUserIdFromUrl();
     
     if (!userId) {
-        alert('Не указан user_id. Используйте URL вида: http://localhost:3000/?user_id=123456');
+        alert('Не указан user_id. Используйте URL вида: http://localhost:8080/?user_id=123456');
         return;
     }
     
@@ -39,7 +39,7 @@ async function loadUserInfo() {
 }
 
 // Переключение вкладок
-function showTab(tabName) {
+function showTab(event, tabName) {
     // Скрываем все вкладки
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -54,7 +54,9 @@ function showTab(tabName) {
     document.getElementById(tabName).classList.add('active');
     
     // Делаем кнопку активной
-    event.target.classList.add('active');
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
     
     // Загружаем данные для вкладки
     switch(tabName) {
@@ -238,10 +240,13 @@ async function filterExpenses() {
     const endDate = document.getElementById('end-date').value;
     const category = document.getElementById('category-filter').value;
     
-    let url = `${API_URL}/expenses/${userId}?`;
-    if (startDate) url += `start_date=${startDate}&`;
-    if (endDate) url += `end_date=${endDate}&`;
-    if (category) url += `category=${category}&`;
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (category) params.append('category', category);
+
+    const query = params.toString();
+    const url = `${API_URL}/expenses/${userId}${query ? `?${query}` : ''}`;
     
     try {
         const response = await fetch(url);

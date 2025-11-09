@@ -1,118 +1,134 @@
-import sqlite3
 import logging
 from datetime import datetime
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+from db import get_database_url, wait_for_db
+
 logger = logging.getLogger(__name__)
 
+
 class DatabaseMigration:
-    def __init__(self, db_path='expenses.db'):
-        self.db_path = db_path
-        
+    def __init__(self, db_url: str | None = None):
+        self.db_url = db_url or get_database_url()
+
     def get_connection(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-    
+        return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+
     def init_migration_table(self):
         """Создание таблицы для отслеживания миграций"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS migrations (
-            id INTEGER PRIMARY KEY,
-            version INTEGER UNIQUE NOT NULL,
-            description TEXT,
-            applied_at TEXT NOT NULL
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS migrations (
+                id SERIAL PRIMARY KEY,
+                version INTEGER UNIQUE NOT NULL,
+                description TEXT,
+                applied_at TIMESTAMP NOT NULL
+            )
+            """
         )
-        ''')
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_current_version(self):
         """Получение текущей версии БД"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        try:
-            cursor.execute('SELECT MAX(version) as version FROM migrations')
-            result = cursor.fetchone()
-            version = result['version'] if result['version'] else 0
-        except sqlite3.OperationalError:
-            version = 0
-            
+
+        cursor.execute("SELECT COALESCE(MAX(version), 0) as version FROM migrations")
+        result = cursor.fetchone()
+        version = result["version"] if result else 0
+
         conn.close()
         return version
-    
+
+    def column_exists(self, table_name, column_name):
+        """Проверка существования колонки в таблице"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+              AND column_name = %s
+            """,
+            (table_name, column_name),
+        )
+        exists = cursor.fetchone() is not None
+        conn.close()
+        return exists
+
     def apply_migration(self, version, description, migration_func):
         """Применение миграции"""
         current_version = self.get_current_version()
-        
+
         if version <= current_version:
-            logger.info(f"Миграция {version} уже применена")
+            logger.info("Миграция %s уже применена", version)
             return
-            
-        logger.info(f"Применение миграции {version}: {description}")
-        
+
+        logger.info("Применение миграции %s: %s", version, description)
+
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         try:
-            # Выполняем миграцию
             migration_func(cursor)
-            
-            # Записываем информацию о миграции
-            cursor.execute('''
-            INSERT INTO migrations (version, description, applied_at) 
-            VALUES (?, ?, ?)
-            ''', (version, description, datetime.now().isoformat()))
-            
+
+            cursor.execute(
+                """
+                INSERT INTO migrations (version, description, applied_at)
+                VALUES (%s, %s, %s)
+                """,
+                (version, description, datetime.now()),
+            )
+
             conn.commit()
-            logger.info(f"Миграция {version} успешно применена")
-            
+            logger.info("Миграция %s успешно применена", version)
+
         except Exception as e:
             conn.rollback()
-            logger.error(f"Ошибка при применении миграции {version}: {e}")
+            logger.error("Ошибка при применении миграции %s: %s", version, e)
             raise
         finally:
             conn.close()
-    
+
     def run_migrations(self):
         """Запуск всех миграций"""
         self.init_migration_table()
-        
-        # Миграция 1: Добавление user_name в expenses
+
         def migration_1(cursor):
-            cursor.execute('''
-            ALTER TABLE expenses ADD COLUMN user_name TEXT
-            ''')
-            
-        # Миграция 2: Добавление user_name в budgets
+            if not self.column_exists("expenses", "user_name"):
+                cursor.execute("ALTER TABLE expenses ADD COLUMN user_name TEXT")
+                logger.info("Добавлена колонка user_name в таблицу expenses")
+
         def migration_2(cursor):
-            cursor.execute('''
-            ALTER TABLE budgets ADD COLUMN user_name TEXT
-            ''')
-            
-        # Миграция 3: Добавление user_name в savings_goals
+            if not self.column_exists("budgets", "user_name"):
+                cursor.execute("ALTER TABLE budgets ADD COLUMN user_name TEXT")
+                logger.info("Добавлена колонка user_name в таблицу budgets")
+
         def migration_3(cursor):
-            cursor.execute('''
-            ALTER TABLE savings_goals ADD COLUMN user_name TEXT
-            ''')
-            
-        # Миграция 4: Добавление description в expenses
+            if not self.column_exists("savings_goals", "user_name"):
+                cursor.execute("ALTER TABLE savings_goals ADD COLUMN user_name TEXT")
+                logger.info("Добавлена колонка user_name в таблицу savings_goals")
+
         def migration_4(cursor):
-            cursor.execute('''
-            ALTER TABLE expenses ADD COLUMN description TEXT
-            ''')
-            
-        # Миграция 5: Добавление goal_name в savings_goals
+            if not self.column_exists("expenses", "description"):
+                cursor.execute("ALTER TABLE expenses ADD COLUMN description TEXT")
+                logger.info("Добавлена колонка description в таблицу expenses")
+
         def migration_5(cursor):
-            cursor.execute('''
-            ALTER TABLE savings_goals ADD COLUMN goal_name TEXT
-            ''')
-            
-        # Применяем миграции
+            if not self.column_exists("savings_goals", "goal_name"):
+                cursor.execute("ALTER TABLE savings_goals ADD COLUMN goal_name TEXT")
+                logger.info("Добавлена колонка goal_name в таблицу savings_goals")
+
         migrations = [
             (1, "Добавление user_name в expenses", migration_1),
             (2, "Добавление user_name в budgets", migration_2),
@@ -120,19 +136,17 @@ class DatabaseMigration:
             (4, "Добавление description в expenses", migration_4),
             (5, "Добавление goal_name в savings_goals", migration_5),
         ]
-        
+
         for version, description, func in migrations:
             try:
                 self.apply_migration(version, description, func)
-            except sqlite3.OperationalError as e:
-                # Если колонка уже существует, пропускаем
-                if "duplicate column name" in str(e).lower():
-                    logger.info(f"Колонка из миграции {version} уже существует, пропускаем")
-                else:
-                    raise
+            except Exception as e:
+                logger.error("Ошибка при применении миграции %s: %s", version, e)
+
 
 def check_and_update_database():
     """Функция для проверки и обновления структуры БД"""
+    wait_for_db()
     migration = DatabaseMigration()
     migration.run_migrations()
     logger.info("Проверка и обновление базы данных завершены")

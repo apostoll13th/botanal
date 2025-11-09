@@ -21,15 +21,11 @@ python bot.py
 
 ### Running the Web Interface
 ```bash
-# Quick start (runs both backend and frontend)
+# Quick start (runs db + backend + frontend)
+docker compose up --build
+
+# Или только веб-часть (поднимет backend, frontend и их зависимости)
 ./start_web_interface.sh
-
-# Or manually:
-# Terminal 1 - Backend API
-cd backend && python app.py
-
-# Terminal 2 - Frontend
-cd frontend && python -m http.server 3000
 ```
 
 ### Dependencies Installation
@@ -56,7 +52,7 @@ cd backend && pip install -r requirements.txt
 
 ### Current Bot Structure (Monolithic)
 - **bot.py**: Contains all functionality including:
-  - Database operations (SQLite)
+  - Database operations (PostgreSQL via psycopg2)
   - Telegram handlers and conversations
   - Chart generation with matplotlib
   - User management and authentication
