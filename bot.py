@@ -5,7 +5,7 @@ This file orchestrates all components and starts the bot.
 
 import logging
 from datetime import time
-from telegram import BotCommand
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 
 # Import configuration
@@ -62,7 +62,7 @@ def create_savings_handler():
 
 
 async def setup_bot_commands(application: Application) -> None:
-    """Register bot commands in Telegram menu"""
+    """Register bot commands in Telegram menu for all scopes"""
     commands = [
         BotCommand("start", "Главное меню и информация о боте"),
         BotCommand("add_expense", "Добавить расход"),
@@ -79,8 +79,24 @@ async def setup_bot_commands(application: Application) -> None:
         BotCommand("reset_password", "Сбросить пароль для веб-кабинета"),
     ]
 
-    await application.bot.set_my_commands(commands)
-    logger.info(f"Bot commands registered: {len(commands)} commands")
+    # Устанавливаем команды для всех областей видимости
+    scopes = [
+        (BotCommandScopeDefault(), "default"),
+        (BotCommandScopeAllPrivateChats(), "all_private_chats"),
+        (BotCommandScopeAllGroupChats(), "all_group_chats"),
+    ]
+
+    for scope, scope_name in scopes:
+        try:
+            # Сначала удаляем старые команды
+            await application.bot.delete_my_commands(scope=scope)
+            # Затем устанавливаем новые
+            await application.bot.set_my_commands(commands, scope=scope)
+            logger.info(f"Commands registered for scope '{scope_name}': {len(commands)} commands")
+        except Exception as e:
+            logger.warning(f"Failed to set commands for scope '{scope_name}': {e}")
+
+    logger.info("All bot commands successfully registered")
 
 
 def setup_handlers(application: Application) -> None:
