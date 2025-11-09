@@ -195,6 +195,27 @@ docker compose up --build
 docker compose down -v
 ```
 
+## ⚙️ CI/CD (GitHub Actions)
+
+- Workflow `.github/workflows/ci-cd.yml` запускается на push/PR в `main` и выполняет:
+  - `go test`/`go vet` для `backend-go`
+  - `npm test` + `npm run build` для `frontend-react`
+  - `pip` install + `python -m compileall` для Telegram-бота
+  - Сборку multi-arch Docker-образов (`bot`, `backend`, `frontend`) и публикацию в GHCR как `ghcr.io/<owner>/<repo>-<service>:{sha,latest}`
+- Для production-деплоя по SSH задайте переменную репозитория `ENABLE_PROD_DEPLOY=true` и добавьте секреты:
+
+| Secret | Назначение |
+| --- | --- |
+| `PROD_HOST` | IP / hostname сервера |
+| `PROD_SSH_USER` | Пользователь с доступом к репозиторию |
+| `PROD_SSH_KEY` | Приватный ключ (OpenSSH) |
+| `PROD_APP_PATH` | Путь до клонa `telega_bot` на сервере |
+| `GHCR_USERNAME` | Учётка с `read:packages` |
+| `GHCR_TOKEN` | PAT для логина в GHCR |
+
+- Серверный деплой делает `git pull`, авторизуется в GHCR и запускает `docker compose pull && docker compose up -d` с тегом текущего коммита.
+- Укажите в `.env` значение `IMAGE_REGISTRY_PREFIX` (например, `ghcr.io/your-gh-user/telega_bot`). Для локальной разработки можно оставить дефолт `telega_bot`, а переменная `IMAGE_TAG` по умолчанию `latest` — CI подставляет SHA коммита во время деплоя.
+
 ## 📊 API Endpoints
 
 Backend предоставляет следующие REST API эндпоинты:

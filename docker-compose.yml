@@ -14,6 +14,7 @@ services:
       - "5432:5432"
 
   bot:
+    image: ${IMAGE_REGISTRY_PREFIX:-telega_bot}-bot:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.bot
@@ -26,6 +27,7 @@ services:
     restart: unless-stopped
 
   backend:
+    image: ${IMAGE_REGISTRY_PREFIX:-telega_bot}-backend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend-go
@@ -40,6 +42,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: ${IMAGE_REGISTRY_PREFIX:-telega_bot}-frontend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.frontend-react
