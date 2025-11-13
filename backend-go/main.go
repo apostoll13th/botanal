@@ -228,17 +228,19 @@ func healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// Get expenses for a user with optional filters
+// Get expenses for entire family with optional filters (no user_id filter)
 func getExpenses(c *gin.Context) {
-	userID := getTelegramUserID(c)
+	userID := getTelegramUserID(c) // Keep for audit, but don't filter by it
+	_ = userID // Prevent unused variable warning
+
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 	category := c.Query("category")
 	txType := strings.ToLower(c.DefaultQuery("type", "expense"))
 
-	query := "SELECT id, user_id, amount, category, date, description, user_name, transaction_type FROM expenses WHERE user_id = $1"
-	args := []interface{}{userID}
-	argCount := 1
+	query := "SELECT id, user_id, amount, category, date, description, user_name, transaction_type FROM expenses WHERE 1=1"
+	args := []interface{}{}
+	argCount := 0
 
 	if startDate != "" {
 		argCount++
@@ -295,21 +297,22 @@ func getExpenses(c *gin.Context) {
 	c.JSON(http.StatusOK, expenses)
 }
 
-// Get expenses summary (last 30 days)
+// Get expenses summary for entire family (last 30 days)
 func getExpensesSummary(c *gin.Context) {
-	userID := getTelegramUserID(c)
+	userID := getTelegramUserID(c) // Keep for audit, but don't filter by it
+	_ = userID // Prevent unused variable warning
 
 	// Date 30 days ago
 	date30DaysAgo := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
 
-	// Get aggregated expenses by category
+	// Get aggregated expenses by category (entire family)
 	rows, err := db.Query(`
 		SELECT category, SUM(amount) as total
 		FROM expenses
-		WHERE user_id = $1 AND date >= $2 AND transaction_type = 'expense'
+		WHERE date >= $1 AND transaction_type = 'expense'
 		GROUP BY category
 		ORDER BY total DESC
-	`, userID, date30DaysAgo)
+	`, date30DaysAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -330,14 +333,14 @@ func getExpensesSummary(c *gin.Context) {
 		total += ct.Amount
 	}
 
-	// Get daily expenses for chart
+	// Get daily expenses for chart (entire family)
 	rows2, err := db.Query(`
 		SELECT date, SUM(amount) as daily_total
 		FROM expenses
-		WHERE user_id = $1 AND date >= $2 AND transaction_type = 'expense'
+		WHERE date >= $1 AND transaction_type = 'expense'
 		GROUP BY date
 		ORDER BY date
-	`, userID, date30DaysAgo)
+	`, date30DaysAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -371,16 +374,16 @@ func getExpensesSummary(c *gin.Context) {
 	c.JSON(http.StatusOK, summary)
 }
 
-// Get budgets for a user
+// Get budgets for entire family (no user_id filter)
 func getBudgets(c *gin.Context) {
-	userID := getTelegramUserID(c)
+	userID := getTelegramUserID(c) // Keep for audit, but don't filter by it
+	_ = userID // Prevent unused variable warning
 
 	rows, err := db.Query(`
 		SELECT id, category, amount, period
 		FROM budgets
-		WHERE user_id = $1
 		ORDER BY category
-	`, userID)
+	`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -414,13 +417,13 @@ func getBudgets(c *gin.Context) {
 			periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 		}
 
-		// Get spent amount for this budget
+		// Get spent amount for entire family for this budget
 		var spent sql.NullFloat64
 		err = db.QueryRow(`
 			SELECT SUM(amount)
 			FROM expenses
-			WHERE user_id = $1 AND category = $2 AND date >= $3 AND transaction_type = 'expense'
-		`, userID, b.Category, periodStart.Format("2006-01-02")).Scan(&spent)
+			WHERE category = $1 AND date >= $2 AND transaction_type = 'expense'
+		`, b.Category, periodStart.Format("2006-01-02")).Scan(&spent)
 		if err != nil && err != sql.ErrNoRows {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -514,16 +517,16 @@ func createBudgetHandler(c *gin.Context) {
 
 // Get savings goals for a user
 func getSavingsGoals(c *gin.Context) {
-	userID := getTelegramUserID(c)
+	userID := getTelegramUserID(c) // Keep for audit, but don't filter by it
+	_ = userID // Prevent unused variable warning
 
 	rows, err := db.Query(`
 		SELECT id, COALESCE(goal_name, description) as name, description,
 		       target_amount, COALESCE(current_amount, 0) as current_amount,
 		       target_date, created_date
 		FROM savings_goals
-		WHERE user_id = $1
 		ORDER BY created_date DESC
-	`, userID)
+	`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
