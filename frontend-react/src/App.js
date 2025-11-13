@@ -16,6 +16,7 @@ import Users from './components/Users';
 import Memos from './components/Memos';
 import Wishlist from './components/Wishlist';
 import ThemeToggle from './components/ThemeToggle';
+import InstallPWA from './components/InstallPWA';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -143,15 +144,20 @@ function App() {
     <div className="App">
       <header className="header">
         <div className="flex items-center justify-between w-full">
-          <h1>Финансовая аналитика</h1>
-          <div className="flex items-center gap-4">
+          <div className="header-left">
+            <h1>💰 Семейный бюджет</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <InstallPWA />
             <ThemeToggle />
             {authToken && (
               <div className="user-info">
                 <div className="user-meta">
                   <div className="user-details">
                     <span className="user-name">{displayName}</span>
-                    {authUser && <span className="user-role">{authUser.role}</span>}
+                    {authUser && authUser.role && (
+                      <span className="user-role-badge">{authUser.role === 'admin' ? '👑 Админ' : authUser.role}</span>
+                    )}
                   </div>
                   <button className="logout-btn" onClick={handleLogout}>
                     Выйти
