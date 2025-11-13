@@ -123,6 +123,55 @@ type Category struct {
 	Description *string `json:"description,omitempty"`
 }
 
+type Memo struct {
+	ID        int    `json:"id"`
+	UserID    int    `json:"user_id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type Wishlist struct {
+	ID          int     `json:"id"`
+	UserID      int     `json:"user_id"`
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	URL         *string `json:"url,omitempty"`
+	ImageURL    *string `json:"image_url,omitempty"`
+	Priority    int     `json:"priority"`
+	IsCompleted bool    `json:"is_completed"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+}
+
+type createMemoRequest struct {
+	Title   string `json:"title"`
+	Content string `json:"content" binding:"required"`
+}
+
+type updateMemoRequest struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type createWishlistRequest struct {
+	Title       string  `json:"title" binding:"required"`
+	Description *string `json:"description"`
+	URL         *string `json:"url"`
+	ImageURL    *string `json:"image_url"`
+	Priority    int     `json:"priority"`
+}
+
+type updateWishlistRequest struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	URL         *string `json:"url"`
+	ImageURL    *string `json:"image_url"`
+	Priority    *int    `json:"priority"`
+	IsCompleted *bool   `json:"is_completed"`
+}
+
 type createExpenseRequest struct {
 	Amount          float64 `json:"amount" binding:"required"`
 	Category        string  `json:"category" binding:"required"`
@@ -1353,6 +1402,285 @@ func seedDefaultAppUsers() error {
 	return nil
 }
 
+// ========== MEMOS HANDLERS ==========
+
+func getMemos(c *gin.Context) {
+	userID := getTelegramUserID(c)
+
+	rows, err := db.Query(`
+		SELECT id, user_id, title, content, created_at, updated_at
+		FROM memos
+		ORDER BY updated_at DESC, created_at DESC
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var memos []Memo
+	for rows.Next() {
+		var m Memo
+		err := rows.Scan(&m.ID, &m.UserID, &m.Title, &m.Content, &m.CreatedAt, &m.UpdatedAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		memos = append(memos, m)
+	}
+
+	if memos == nil {
+		memos = []Memo{}
+	}
+
+	_ = userID // Keep for future audit features
+	c.JSON(http.StatusOK, memos)
+}
+
+func createMemo(c *gin.Context) {
+	var req createMemoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+	title := req.Title
+	if title == "" {
+		title = "Без названия"
+	}
+
+	var id int
+	err := db.QueryRow(`
+		INSERT INTO memos (user_id, title, content, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
+		RETURNING id
+	`, userID, title, req.Content).Scan(&id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func updateMemo(c *gin.Context) {
+	id := c.Param("id")
+	var req updateMemoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+
+	// Check ownership (optional - can be removed for family sharing)
+	var ownerID int
+	err := db.QueryRow("SELECT user_id FROM memos WHERE id = $1", id).Scan(&ownerID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Memo not found"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	title := req.Title
+	if title == "" {
+		title = "Без названия"
+	}
+
+	_, err = db.Exec(`
+		UPDATE memos
+		SET title = $1, content = $2, updated_at = NOW()
+		WHERE id = $3
+	`, title, req.Content, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = userID // Keep for future audit
+	c.Status(http.StatusOK)
+}
+
+func deleteMemo(c *gin.Context) {
+	id := c.Param("id")
+	userID := getTelegramUserID(c)
+
+	// Optional: Check ownership before deleting
+	var ownerID int
+	err := db.QueryRow("SELECT user_id FROM memos WHERE id = $1", id).Scan(&ownerID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Memo not found"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM memos WHERE id = $1", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = userID // Keep for future audit
+	c.Status(http.StatusOK)
+}
+
+// ========== WISHLIST HANDLERS ==========
+
+func getWishlist(c *gin.Context) {
+	userID := getTelegramUserID(c)
+
+	rows, err := db.Query(`
+		SELECT id, user_id, title, description, url, image_url, priority, is_completed, created_at, updated_at
+		FROM wishlist
+		ORDER BY priority DESC, created_at DESC
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var items []Wishlist
+	for rows.Next() {
+		var w Wishlist
+		err := rows.Scan(&w.ID, &w.UserID, &w.Title, &w.Description, &w.URL, &w.ImageURL, &w.Priority, &w.IsCompleted, &w.CreatedAt, &w.UpdatedAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		items = append(items, w)
+	}
+
+	if items == nil {
+		items = []Wishlist{}
+	}
+
+	_ = userID // Keep for future audit features
+	c.JSON(http.StatusOK, items)
+}
+
+func createWishlistItem(c *gin.Context) {
+	var req createWishlistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+
+	var id int
+	err := db.QueryRow(`
+		INSERT INTO wishlist (user_id, title, description, url, image_url, priority, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		RETURNING id
+	`, userID, req.Title, req.Description, req.URL, req.ImageURL, req.Priority).Scan(&id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func updateWishlistItem(c *gin.Context) {
+	id := c.Param("id")
+	var req updateWishlistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := getTelegramUserID(c)
+
+	// Check if item exists
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM wishlist WHERE id = $1)", id).Scan(&exists)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Wishlist item not found"})
+		return
+	}
+
+	// Build dynamic update query
+	query := "UPDATE wishlist SET updated_at = NOW()"
+	args := []interface{}{}
+	argCount := 1
+
+	if req.Title != nil {
+		query += fmt.Sprintf(", title = $%d", argCount)
+		args = append(args, *req.Title)
+		argCount++
+	}
+	if req.Description != nil {
+		query += fmt.Sprintf(", description = $%d", argCount)
+		args = append(args, *req.Description)
+		argCount++
+	}
+	if req.URL != nil {
+		query += fmt.Sprintf(", url = $%d", argCount)
+		args = append(args, *req.URL)
+		argCount++
+	}
+	if req.ImageURL != nil {
+		query += fmt.Sprintf(", image_url = $%d", argCount)
+		args = append(args, *req.ImageURL)
+		argCount++
+	}
+	if req.Priority != nil {
+		query += fmt.Sprintf(", priority = $%d", argCount)
+		args = append(args, *req.Priority)
+		argCount++
+	}
+	if req.IsCompleted != nil {
+		query += fmt.Sprintf(", is_completed = $%d", argCount)
+		args = append(args, *req.IsCompleted)
+		argCount++
+	}
+
+	query += fmt.Sprintf(" WHERE id = $%d", argCount)
+	args = append(args, id)
+
+	_, err = db.Exec(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = userID // Keep for future audit
+	c.Status(http.StatusOK)
+}
+
+func deleteWishlistItem(c *gin.Context) {
+	id := c.Param("id")
+	userID := getTelegramUserID(c)
+
+	result, err := db.Exec("DELETE FROM wishlist WHERE id = $1", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Wishlist item not found"})
+		return
+	}
+
+	_ = userID // Keep for future audit
+	c.Status(http.StatusOK)
+}
+
 func main() {
 	// Load .env file if exists
 	godotenv.Load()
@@ -1402,6 +1730,18 @@ func main() {
 		api.GET("/categories", listCategories)
 		api.POST("/categories", createCategory)
 		api.POST("/users", createOrUpdateUser)
+
+		// Memos endpoints
+		api.GET("/memos", getMemos)
+		api.POST("/memos", createMemo)
+		api.PUT("/memos/:id", updateMemo)
+		api.DELETE("/memos/:id", deleteMemo)
+
+		// Wishlist endpoints
+		api.GET("/wishlist", getWishlist)
+		api.POST("/wishlist", createWishlistItem)
+		api.PUT("/wishlist/:id", updateWishlistItem)
+		api.DELETE("/wishlist/:id", deleteWishlistItem)
 	}
 
 	admin := api.Group("/admin")

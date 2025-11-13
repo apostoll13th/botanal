@@ -117,4 +117,46 @@ export const deleteAppUser = async (id) => {
   await api.delete(`/admin/users/${id}`);
 };
 
+// Memos API
+export const getMemos = async () => {
+  const response = await api.get('/memos');
+  return response.data;
+};
+
+export const createMemo = async (payload) => {
+  const response = await api.post('/memos', payload);
+  return response.data;
+};
+
+export const updateMemo = async (id, payload) => {
+  const response = await api.put(`/memos/${id}`, payload);
+  return response.data;
+};
+
+export const deleteMemo = async (id) => {
+  const response = await api.delete(`/memos/${id}`);
+  return response.data;
+};
+
+// Wishlist API
+export const getWishlist = async () => {
+  const response = await api.get('/wishlist');
+  return response.data;
+};
+
+export const createWishlistItem = async (payload) => {
+  const response = await api.post('/wishlist', payload);
+  return response.data;
+};
+
+export const updateWishlistItem = async (id, payload) => {
+  const response = await api.put(`/wishlist/${id}`, payload);
+  return response.data;
+};
+
+export const deleteWishlistItem = async (id) => {
+  const response = await api.delete(`/wishlist/${id}`);
+  return response.data;
+};
+
 export default api;

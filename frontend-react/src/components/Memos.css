@@ -179,6 +179,31 @@
   transition: background-color 0.2s;
 }
 
+.cancel-btn {
+  @apply bg-gray-500 hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-700;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-left: 8px;
+}
+
+.memo-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.error-message {
+  @apply bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
 @media (max-width: 768px) {
   .memos-container {
     padding: 10px;

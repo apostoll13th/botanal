@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getMemos, createMemo, updateMemo, deleteMemo } from '../services/api';
 import './Memos.css';
 
 const Memos = () => {
@@ -6,48 +7,76 @@ const Memos = () => {
   const [newMemo, setNewMemo] = useState({ title: '', content: '' });
   const [editingMemo, setEditingMemo] = useState(null);
   const [filter, setFilter] = useState('all'); // all, today, week, month
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Load memos from localStorage for now
-    // TODO: Implement API endpoints in backend
-    const savedMemos = localStorage.getItem('memos');
-    if (savedMemos) {
-      setMemos(JSON.parse(savedMemos));
-    }
+    loadMemos();
   }, []);
 
-  useEffect(() => {
-    // Save memos to localStorage
-    localStorage.setItem('memos', JSON.stringify(memos));
-  }, [memos]);
-
-  const addMemo = () => {
-    if (!newMemo.title.trim() && !newMemo.content.trim()) return;
-
-    const memo = {
-      id: Date.now(),
-      title: newMemo.title || 'Без названия',
-      content: newMemo.content,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setMemos([memo, ...memos]);
-    setNewMemo({ title: '', content: '' });
+  const loadMemos = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getMemos();
+      setMemos(data);
+    } catch (err) {
+      setError('Не удалось загрузить записи');
+      console.error('Error loading memos:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateMemo = (id, updates) => {
-    setMemos(memos.map(memo =>
-      memo.id === id
-        ? { ...memo, ...updates, updatedAt: new Date().toISOString() }
-        : memo
-    ));
-    setEditingMemo(null);
+  const addMemo = async () => {
+    if (!newMemo.content.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = {
+        title: newMemo.title.trim() || 'Без названия',
+        content: newMemo.content.trim(),
+      };
+      await createMemo(payload);
+      setNewMemo({ title: '', content: '' });
+      await loadMemos(); // Reload to get the created memo with ID and timestamps
+    } catch (err) {
+      setError('Не удалось создать запись');
+      console.error('Error creating memo:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteMemo = (id) => {
-    if (window.confirm('Удалить эту запись?')) {
-      setMemos(memos.filter(memo => memo.id !== id));
+  const handleUpdateMemo = async (id, updates) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await updateMemo(id, updates);
+      setEditingMemo(null);
+      await loadMemos(); // Reload to get updated data
+    } catch (err) {
+      setError('Не удалось обновить запись');
+      console.error('Error updating memo:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMemo = async (id) => {
+    if (!window.confirm('Удалить эту запись?')) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      await deleteMemo(id);
+      await loadMemos(); // Reload after deletion
+    } catch (err) {
+      setError('Не удалось удалить запись');
+      console.error('Error deleting memo:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -59,11 +88,11 @@ const Memos = () => {
 
     switch (filter) {
       case 'today':
-        return memos.filter(m => new Date(m.createdAt) >= startOfDay);
+        return memos.filter(m => new Date(m.created_at) >= startOfDay);
       case 'week':
-        return memos.filter(m => new Date(m.createdAt) >= startOfWeek);
+        return memos.filter(m => new Date(m.created_at) >= startOfWeek);
       case 'month':
-        return memos.filter(m => new Date(m.createdAt) >= startOfMonth);
+        return memos.filter(m => new Date(m.created_at) >= startOfMonth);
       default:
         return memos;
     }
@@ -80,12 +109,22 @@ const Memos = () => {
     });
   };
 
+  const getCurrentMemo = (id) => {
+    return memos.find(m => m.id === id);
+  };
+
   return (
     <div className="memos-container">
       <div className="memos-header">
         <h2>📝 Мемосы (Дневник)</h2>
         <p className="subtitle">Ведите личные заметки и дневник</p>
       </div>
+
+      {error && (
+        <div className="error-message">
+          {error}
+        </div>
+      )}
 
       <div className="memo-input-section">
         <input
@@ -94,6 +133,7 @@ const Memos = () => {
           value={newMemo.title}
           onChange={(e) => setNewMemo({ ...newMemo, title: e.target.value })}
           className="memo-title-input"
+          disabled={loading}
         />
         <textarea
           placeholder="Напишите что-то..."
@@ -101,9 +141,10 @@ const Memos = () => {
           onChange={(e) => setNewMemo({ ...newMemo, content: e.target.value })}
           className="memo-content-input"
           rows="4"
+          disabled={loading}
         />
-        <button onClick={addMemo} className="add-memo-btn">
-          Добавить запись
+        <button onClick={addMemo} className="add-memo-btn" disabled={loading}>
+          {loading ? 'Сохранение...' : 'Добавить запись'}
         </button>
       </div>
 
@@ -135,7 +176,11 @@ const Memos = () => {
       </div>
 
       <div className="memos-list">
-        {filterMemos().length === 0 ? (
+        {loading && memos.length === 0 ? (
+          <div className="empty-state">
+            <p>Загрузка...</p>
+          </div>
+        ) : filterMemos().length === 0 ? (
           <div className="empty-state">
             <p>Пока нет записей. Начните вести дневник!</p>
           </div>
@@ -143,23 +188,12 @@ const Memos = () => {
           filterMemos().map(memo => (
             <div key={memo.id} className="memo-card">
               {editingMemo === memo.id ? (
-                <div className="memo-edit-form">
-                  <input
-                    type="text"
-                    value={memo.title}
-                    onChange={(e) => updateMemo(memo.id, { title: e.target.value })}
-                    className="memo-title-input"
-                  />
-                  <textarea
-                    value={memo.content}
-                    onChange={(e) => updateMemo(memo.id, { content: e.target.value })}
-                    className="memo-content-input"
-                    rows="4"
-                  />
-                  <button onClick={() => setEditingMemo(null)} className="save-btn">
-                    Сохранить
-                  </button>
-                </div>
+                <MemoEditForm
+                  memo={getCurrentMemo(memo.id)}
+                  onSave={(updates) => handleUpdateMemo(memo.id, updates)}
+                  onCancel={() => setEditingMemo(null)}
+                  loading={loading}
+                />
               ) : (
                 <>
                   <div className="memo-header">
@@ -169,13 +203,15 @@ const Memos = () => {
                         onClick={() => setEditingMemo(memo.id)}
                         className="edit-btn"
                         title="Редактировать"
+                        disabled={loading}
                       >
                         ✏️
                       </button>
                       <button
-                        onClick={() => deleteMemo(memo.id)}
+                        onClick={() => handleDeleteMemo(memo.id)}
                         className="delete-btn"
                         title="Удалить"
+                        disabled={loading}
                       >
                         🗑️
                       </button>
@@ -183,8 +219,8 @@ const Memos = () => {
                   </div>
                   <p className="memo-content">{memo.content}</p>
                   <div className="memo-footer">
-                    <span className="memo-date">{formatDate(memo.createdAt)}</span>
-                    {memo.updatedAt !== memo.createdAt && (
+                    <span className="memo-date">{formatDate(memo.created_at)}</span>
+                    {memo.updated_at !== memo.created_at && (
                       <span className="memo-updated">(обновлено)</span>
                     )}
                   </div>
@@ -193,6 +229,51 @@ const Memos = () => {
             </div>
           ))
         )}
+      </div>
+    </div>
+  );
+};
+
+// Separate component for editing memo
+const MemoEditForm = ({ memo, onSave, onCancel, loading }) => {
+  const [title, setTitle] = useState(memo.title);
+  const [content, setContent] = useState(memo.content);
+
+  const handleSave = () => {
+    const updates = {};
+    if (title !== memo.title) updates.title = title;
+    if (content !== memo.content) updates.content = content;
+
+    if (Object.keys(updates).length > 0) {
+      onSave(updates);
+    } else {
+      onCancel();
+    }
+  };
+
+  return (
+    <div className="memo-edit-form">
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className="memo-title-input"
+        disabled={loading}
+      />
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        className="memo-content-input"
+        rows="4"
+        disabled={loading}
+      />
+      <div className="memo-edit-actions">
+        <button onClick={handleSave} className="save-btn" disabled={loading}>
+          {loading ? 'Сохранение...' : 'Сохранить'}
+        </button>
+        <button onClick={onCancel} className="cancel-btn" disabled={loading}>
+          Отмена
+        </button>
       </div>
     </div>
   );

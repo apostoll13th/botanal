@@ -14,6 +14,7 @@ import Goals from './components/Goals';
 import Categories from './components/Categories';
 import Users from './components/Users';
 import Memos from './components/Memos';
+import Wishlist from './components/Wishlist';
 import ThemeToggle from './components/ThemeToggle';
 
 function App() {
@@ -124,6 +125,8 @@ function App() {
         return <Categories />;
       case 'memos':
         return <Memos />;
+      case 'wishlist':
+        return <Wishlist />;
       case 'users':
         return <Users currentUser={authUser} />;
       default:
@@ -197,6 +200,12 @@ function App() {
             onClick={() => setActiveTab('memos')}
           >
             Мемосы
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'wishlist' ? 'active' : ''}`}
+            onClick={() => setActiveTab('wishlist')}
+          >
+            Список желаний
           </button>
           {authUser && authUser.role === 'admin' && (
             <button
