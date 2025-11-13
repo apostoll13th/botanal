@@ -1,219 +1,435 @@
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .memos-container {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 20px;
+  animation: fadeInUp 0.5s ease;
 }
 
 .memos-header {
-  margin-bottom: 30px;
+  margin-bottom: 2.5rem;
   text-align: center;
 }
 
 .memos-header h2 {
-  font-size: 2rem;
-  margin-bottom: 8px;
-  @apply text-gray-900 dark:text-gray-100;
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   @apply text-gray-600 dark:text-gray-400;
-  font-size: 1rem;
+  font-size: 1.05rem;
+  font-weight: 500;
 }
 
+/* Input Section with Modern Design */
 .memo-input-section {
-  @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 30px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  @apply bg-white dark:bg-gray-800/50;
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.05);
+  @apply dark:shadow-gray-900/20;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  @apply dark:border-gray-700/30;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.memo-input-section:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .memo-title-input,
 .memo-content-input {
   width: 100%;
-  padding: 12px;
-  margin-bottom: 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  border: 2px solid transparent;
+  border-radius: 12px;
   font-size: 1rem;
-  @apply bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600;
-  transition: border-color 0.2s;
+  @apply bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-gray-100;
+  transition: all 0.3s ease;
+}
+
+.memo-title-input {
+  font-weight: 600;
+  font-size: 1.1rem;
 }
 
 .memo-title-input:focus,
 .memo-content-input:focus {
   outline: none;
-  @apply border-blue-500 dark:border-blue-400;
+  border-color: #667eea;
+  @apply bg-white dark:bg-gray-700;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
 }
 
-.memo-title-input {
-  font-weight: 600;
+.memo-content-input {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  line-height: 1.6;
 }
 
+/* Beautiful Add Button */
 .add-memo-btn {
-  @apply bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700;
-  color: white;
-  padding: 10px 20px;
+  width: 100%;
+  padding: 1rem 1.5rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+.add-memo-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.add-memo-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.add-memo-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Modern Filter Buttons */
 .filter-buttons {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
   justify-content: center;
   flex-wrap: wrap;
 }
 
 .filter-btn {
-  @apply bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
+  background: transparent;
+  border: 2px solid transparent;
+  @apply text-gray-600 dark:text-gray-400;
+  padding: 0.65rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  @apply bg-gray-100 dark:bg-gray-800/50;
 }
 
 .filter-btn:hover {
-  @apply bg-gray-300 dark:bg-gray-600;
+  @apply bg-blue-50 dark:bg-gray-700/70 text-blue-600 dark:text-blue-400;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .filter-btn.active {
-  @apply bg-blue-500 dark:bg-blue-600 text-white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  @apply text-white;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+  transform: translateY(-2px);
 }
 
+.filter-btn.active:hover {
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Memos List */
 .memos-list {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 1.5rem;
 }
 
+/* Modern Memo Card */
 .memo-card {
-  @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s, box-shadow 0.2s;
+  @apply bg-white dark:bg-gray-800/50;
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.05);
+  @apply dark:shadow-gray-900/20;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  @apply dark:border-gray-700/30;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: scaleIn 0.3s ease;
 }
 
 .memo-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  @apply dark:shadow-gray-900/40;
 }
 
 .memo-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  gap: 1rem;
 }
 
 .memo-header h3 {
   @apply text-gray-900 dark:text-gray-100;
-  font-size: 1.25rem;
+  font-size: 1.4rem;
+  font-weight: 700;
   margin: 0;
+  flex: 1;
+  letter-spacing: -0.01em;
 }
 
 .memo-actions {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .edit-btn,
 .delete-btn {
-  background: none;
+  background: transparent;
   border: none;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  padding: 0.5rem;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  @apply text-gray-600 dark:text-gray-400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
-.edit-btn:hover,
-.delete-btn:hover {
-  @apply bg-gray-200 dark:bg-gray-700;
+.edit-btn:hover:not(:disabled) {
+  @apply bg-blue-50 dark:bg-gray-700/70 text-blue-600 dark:text-blue-400;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.delete-btn:hover:not(:disabled) {
+  @apply bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.edit-btn:disabled,
+.delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .memo-content {
   @apply text-gray-700 dark:text-gray-300;
-  font-size: 1rem;
-  line-height: 1.6;
-  margin-bottom: 12px;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin-bottom: 1.5rem;
   white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .memo-footer {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  @apply text-gray-500 dark:text-gray-400;
-  font-size: 0.875rem;
+  gap: 1rem;
+  @apply text-gray-500 dark:text-gray-500;
+  font-size: 0.9rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  @apply dark:border-gray-700/50;
+}
+
+.memo-date {
+  font-weight: 500;
 }
 
 .memo-updated {
+  @apply text-blue-600 dark:text-blue-400;
   font-style: italic;
+  font-size: 0.85rem;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  @apply text-gray-500 dark:text-gray-400;
-}
-
-.empty-state p {
-  font-size: 1.1rem;
-}
-
-.save-btn {
-  @apply bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700;
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.cancel-btn {
-  @apply bg-gray-500 hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-700;
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  margin-left: 8px;
+/* Edit Form */
+.memo-edit-form {
+  animation: fadeInUp 0.3s ease;
 }
 
 .memo-edit-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 
-.error-message {
-  @apply bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+.save-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  @apply hover:from-green-600 hover:to-green-700;
+  color: white;
+  padding: 0.85rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.save-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  flex: 1;
+  @apply bg-gray-200 dark:bg-gray-700;
+  @apply hover:bg-gray-300 dark:hover:bg-gray-600;
+  @apply text-gray-700 dark:text-gray-300;
+  padding: 0.85rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cancel-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.cancel-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Empty State */
+.empty-state {
   text-align: center;
+  padding: 4rem 2rem;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
+.empty-state p {
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+/* Error Message */
+.error-message {
+  @apply bg-red-50 dark:bg-red-900/20;
+  border: 2px solid #fecaca;
+  @apply dark:border-red-800/50;
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  @apply text-red-700 dark:text-red-400;
+  margin-bottom: 2rem;
+  text-align: center;
+  font-weight: 500;
+  animation: fadeInUp 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
   .memos-container {
-    padding: 10px;
+    padding: 0;
+  }
+
+  .memos-header h2 {
+    font-size: 2rem;
+  }
+
+  .memo-input-section {
+    padding: 1.5rem;
+    border-radius: 16px;
   }
 
   .memo-card {
-    padding: 15px;
+    padding: 1.5rem;
+    border-radius: 16px;
   }
 
   .memo-header h3 {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
   }
+
+  .memo-content {
+    font-size: 1rem;
+  }
+
+  .memo-edit-actions {
+    flex-direction: column;
+  }
+
+  .filter-buttons {
+    gap: 0.5rem;
+  }
+
+  .filter-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Focus states for accessibility */
+.memo-title-input:focus-visible,
+.memo-content-input:focus-visible,
+.add-memo-btn:focus-visible,
+.filter-btn:focus-visible,
+.edit-btn:focus-visible,
+.delete-btn:focus-visible,
+.save-btn:focus-visible,
+.cancel-btn:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
 }
