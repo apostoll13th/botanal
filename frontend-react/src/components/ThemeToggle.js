@@ -4,9 +4,18 @@ import { useTheme } from '../ThemeContext';
 const ThemeToggle = () => {
   const { theme, toggleTheme } = useTheme();
 
+  const handleClick = () => {
+    console.log('Current theme:', theme);
+    console.log('Document classes before:', document.documentElement.classList.toString());
+    toggleTheme();
+    setTimeout(() => {
+      console.log('Document classes after:', document.documentElement.classList.toString());
+    }, 100);
+  };
+
   return (
     <button
-      onClick={toggleTheme}
+      onClick={handleClick}
       className="theme-toggle-btn"
       aria-label="Toggle theme"
       title={theme === 'light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему'}

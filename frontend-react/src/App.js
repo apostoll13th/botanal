@@ -151,19 +151,14 @@ function App() {
             <InstallPWA />
             <ThemeToggle />
             {authToken && (
-              <div className="user-info">
-                <div className="user-meta">
-                  <div className="user-details">
-                    <span className="user-name">{displayName}</span>
-                    {authUser && authUser.role && (
-                      <span className="user-role-badge">{authUser.role === 'admin' ? '👑 Админ' : authUser.role}</span>
-                    )}
-                  </div>
-                  <button className="logout-btn" onClick={handleLogout}>
-                    Выйти
-                  </button>
-                </div>
-              </div>
+              <>
+                {authUser && authUser.role === 'admin' && (
+                  <span className="user-role-badge">👑 Админ</span>
+                )}
+                <button className="logout-btn" onClick={handleLogout}>
+                  Выйти
+                </button>
+              </>
             )}
           </div>
         </div>
