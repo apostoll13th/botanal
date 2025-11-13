@@ -1,0 +1,194 @@
+.memos-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.memos-header {
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.memos-header h2 {
+  font-size: 2rem;
+  margin-bottom: 8px;
+  @apply text-gray-900 dark:text-gray-100;
+}
+
+.subtitle {
+  @apply text-gray-600 dark:text-gray-400;
+  font-size: 1rem;
+}
+
+.memo-input-section {
+  @apply bg-white dark:bg-gray-800;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.memo-title-input,
+.memo-content-input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  @apply bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600;
+  transition: border-color 0.2s;
+}
+
+.memo-title-input:focus,
+.memo-content-input:focus {
+  outline: none;
+  @apply border-blue-500 dark:border-blue-400;
+}
+
+.memo-title-input {
+  font-weight: 600;
+}
+
+.add-memo-btn {
+  @apply bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  @apply bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  @apply bg-gray-300 dark:bg-gray-600;
+}
+
+.filter-btn.active {
+  @apply bg-blue-500 dark:bg-blue-600 text-white;
+}
+
+.memos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.memo-card {
+  @apply bg-white dark:bg-gray-800;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.memo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.memo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.memo-header h3 {
+  @apply text-gray-900 dark:text-gray-100;
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.memo-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn,
+.delete-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.edit-btn:hover,
+.delete-btn:hover {
+  @apply bg-gray-200 dark:bg-gray-700;
+}
+
+.memo-content {
+  @apply text-gray-700 dark:text-gray-300;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+
+.memo-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  @apply text-gray-500 dark:text-gray-400;
+  font-size: 0.875rem;
+}
+
+.memo-updated {
+  font-style: italic;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.empty-state p {
+  font-size: 1.1rem;
+}
+
+.save-btn {
+  @apply bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+@media (max-width: 768px) {
+  .memos-container {
+    padding: 10px;
+  }
+
+  .memo-card {
+    padding: 15px;
+  }
+
+  .memo-header h3 {
+    font-size: 1.1rem;
+  }
+}

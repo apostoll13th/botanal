@@ -13,6 +13,7 @@ import Budgets from './components/Budgets';
 import Goals from './components/Goals';
 import Categories from './components/Categories';
 import Users from './components/Users';
+import Memos from './components/Memos';
 import ThemeToggle from './components/ThemeToggle';
 
 function App() {
@@ -121,6 +122,8 @@ function App() {
         return <Goals />;
       case 'categories':
         return <Categories />;
+      case 'memos':
+        return <Memos />;
       case 'users':
         return <Users currentUser={authUser} />;
       default:
@@ -188,6 +191,12 @@ function App() {
             onClick={() => setActiveTab('categories')}
           >
             Категории
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'memos' ? 'active' : ''}`}
+            onClick={() => setActiveTab('memos')}
+          >
+            Мемосы
           </button>
           {authUser && authUser.role === 'admin' && (
             <button
