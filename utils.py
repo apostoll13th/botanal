@@ -96,12 +96,13 @@ def is_bot_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
-def create_monthly_chart(user_id: int) -> Optional[io.BytesIO]:
+def create_monthly_chart(user_id: int = None) -> Optional[io.BytesIO]:
     """
-    Create a pie chart for monthly expenses by category.
+    Create a pie chart for monthly expenses by category (entire family).
+    user_id parameter kept for backward compatibility but is ignored.
     Returns a BytesIO buffer with the chart image or None if no data.
     """
-    expenses, _ = get_monthly_expenses(user_id)
+    expenses, _ = get_monthly_expenses()  # Без user_id - показывает всю семью
 
     if not expenses:
         logger.warning("No expense data for creating chart")
@@ -207,13 +208,13 @@ def format_expense_report(expenses: list, total: float, period: str = "сего�
     return report
 
 
-def format_budget_report(budgets: list, user_id: int) -> str:
+def format_budget_report(budgets: list, user_id: int = None) -> str:
     """
-    Format budget report with current status.
+    Format budget report with current status (family-wide).
 
     Args:
         budgets: List of budget records
-        user_id: User ID for checking budget status
+        user_id: User ID (kept for compatibility, but uses family-wide budget status)
 
     Returns:
         Formatted report string
@@ -222,9 +223,9 @@ def format_budget_report(budgets: list, user_id: int) -> str:
     from config import CODE_TO_PERIOD_LABEL
 
     if not budgets:
-        return 'У вас пока нет установленных бюджетов.'
+        return 'Пока нет установленных бюджетов.'
 
-    report = "Ваши бюджеты:\n\n"
+    report = "Семейные бюджеты:\n\n"
 
     for budget in budgets:
         category = budget['category']
@@ -232,7 +233,8 @@ def format_budget_report(budgets: list, user_id: int) -> str:
         period = budget['period']
         period_label = CODE_TO_PERIOD_LABEL.get(period, period)
 
-        _, spent, percentage = check_budget_status(user_id, category, period)
+        # Используем user_id=0 как сигнал для семейного бюджета (check_budget_status теперь игнорирует user_id)
+        _, spent, percentage = check_budget_status(0, category, period)
 
         report += f"🔹 {category} ({period_label}): {spent:.2f} / {amount:.2f} руб. ({percentage:.1f}%)\n"
 
@@ -241,7 +243,7 @@ def format_budget_report(budgets: list, user_id: int) -> str:
 
 def format_savings_goals_report(goals: list) -> str:
     """
-    Format savings goals report.
+    Format savings goals report (family-wide).
 
     Args:
         goals: List of savings goal records
@@ -250,9 +252,9 @@ def format_savings_goals_report(goals: list) -> str:
         Formatted report string
     """
     if not goals:
-        return 'У вас пока нет целей экономии.'
+        return 'Пока нет целей экономии.'
 
-    report = "Ваши цели экономии:\n\n"
+    report = "Семейные цели экономии:\n\n"
 
     for goal in goals:
         description = goal['description']

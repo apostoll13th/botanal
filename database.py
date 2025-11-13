@@ -51,19 +51,18 @@ def add_expense(user_id: int, amount: float, category: str) -> None:
         conn.close()
 
 
-def get_recent_expenses(user_id: int, limit: int = 5) -> List[Dict]:
-    """Get recent expenses for a user"""
+def get_recent_expenses(user_id: int = None, limit: int = 5) -> List[Dict]:
+    """Get recent expenses for entire family (user_id kept for backward compatibility, but shows all family expenses)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            '''SELECT id, amount, category, date, description, transaction_type
+            '''SELECT id, amount, category, date, description, transaction_type, user_name
                FROM expenses
-               WHERE user_id = %s
                ORDER BY date DESC, id DESC
                LIMIT %s''',
-            (user_id, limit)
+            (limit,)
         )
         results = cursor.fetchall()
         return results
@@ -107,8 +106,8 @@ def delete_expense(user_id: int, expense_id: int) -> bool:
         conn.close()
 
 
-def get_daily_expenses(user_id: int) -> Tuple[List[Dict], float]:
-    """Get today's expenses for a user"""
+def get_daily_expenses(user_id: int = None) -> Tuple[List[Dict], float]:
+    """Get today's expenses for entire family (user_id kept for backward compatibility)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     today = datetime.now().strftime('%Y-%m-%d')
@@ -117,10 +116,10 @@ def get_daily_expenses(user_id: int) -> Tuple[List[Dict], float]:
         cursor.execute(
             '''SELECT category, SUM(amount) as total
                FROM expenses
-               WHERE date = %s AND user_id = %s
+               WHERE date = %s AND transaction_type = 'expense'
                GROUP BY category
                ORDER BY category''',
-            (today, user_id)
+            (today,)
         )
 
         results = cursor.fetchall()
@@ -133,8 +132,8 @@ def get_daily_expenses(user_id: int) -> Tuple[List[Dict], float]:
         conn.close()
 
 
-def get_weekly_expenses(user_id: int) -> Tuple[List[Dict], float]:
-    """Get weekly expenses for a user"""
+def get_weekly_expenses(user_id: int = None) -> Tuple[List[Dict], float]:
+    """Get weekly expenses for entire family (user_id kept for backward compatibility)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     today = datetime.now()
@@ -145,10 +144,10 @@ def get_weekly_expenses(user_id: int) -> Tuple[List[Dict], float]:
         cursor.execute(
             '''SELECT date, SUM(amount) as total
                FROM expenses
-               WHERE user_id = %s AND date BETWEEN %s AND %s
+               WHERE date BETWEEN %s AND %s AND transaction_type = 'expense'
                GROUP BY date
                ORDER BY date''',
-            (user_id, week_ago, today_str)
+            (week_ago, today_str)
         )
         results = cursor.fetchall()
         total = sum(float(row['total']) for row in results if row['total'])
@@ -160,8 +159,8 @@ def get_weekly_expenses(user_id: int) -> Tuple[List[Dict], float]:
         conn.close()
 
 
-def get_monthly_expenses(user_id: int) -> Tuple[List[Dict], float]:
-    """Get monthly expenses for a user"""
+def get_monthly_expenses(user_id: int = None) -> Tuple[List[Dict], float]:
+    """Get monthly expenses for entire family (user_id kept for backward compatibility)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     today = datetime.now()
@@ -169,15 +168,15 @@ def get_monthly_expenses(user_id: int) -> Tuple[List[Dict], float]:
     today_str = today.strftime('%Y-%m-%d')
 
     try:
-        logger.info(f"Getting expenses for user_id={user_id} from {month_ago} to {today_str}")
+        logger.info(f"Getting expenses from {month_ago} to {today_str} for entire family")
 
         cursor.execute(
             '''SELECT category, SUM(amount) as total
                FROM expenses
-               WHERE user_id = %s AND date BETWEEN %s AND %s
+               WHERE date BETWEEN %s AND %s AND transaction_type = 'expense'
                GROUP BY category
                ORDER BY category''',
-            (user_id, month_ago, today_str)
+            (month_ago, today_str)
         )
         results = cursor.fetchall()
 
@@ -225,34 +224,39 @@ def get_detailed_monthly_expenses() -> List[Dict]:
 # ========== BUDGET OPERATIONS ==========
 
 def set_budget(user_id: int, category: str, amount: float, period: str) -> None:
-    """Set or update a budget for a category and period"""
+    """Set or update a budget for a category and period (family-wide budget)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     start_date = datetime.now().strftime('%Y-%m-%d')
     period_code = normalize_period_value(period)
 
     try:
-        # Проверяем, существует ли уже бюджет для этой категории и периода
+        # Получаем имя пользователя для аудита
+        cursor.execute('SELECT user_name FROM users WHERE user_id = %s', (user_id,))
+        result = cursor.fetchone()
+        user_name = result['user_name'] if result else "Пользователь"
+
+        # Проверяем, существует ли уже бюджет для этой категории и периода (общий для семьи)
         cursor.execute(
-            'SELECT id FROM budgets WHERE user_id = %s AND category = %s AND period = %s',
-            (user_id, category, period_code)
+            'SELECT id FROM budgets WHERE category = %s AND period = %s',
+            (category, period_code)
         )
         existing_budget = cursor.fetchone()
 
         if existing_budget:
             # Обновляем существующий бюджет
             cursor.execute(
-                'UPDATE budgets SET amount = %s, start_date = %s WHERE id = %s',
-                (amount, start_date, existing_budget['id'])
+                'UPDATE budgets SET amount = %s, start_date = %s, user_name = %s WHERE id = %s',
+                (amount, start_date, user_name, existing_budget['id'])
             )
-            logger.info(f"Budget updated: user_id={user_id}, category={category}, period={period_code}")
+            logger.info(f"Family budget updated by {user_name}: category={category}, period={period_code}")
         else:
-            # Создаем новый бюджет
+            # Создаем новый бюджет (без привязки к конкретному user_id, но с аудитом кто создал)
             cursor.execute(
-                'INSERT INTO budgets (user_id, category, amount, period, start_date) VALUES (%s, %s, %s, %s, %s)',
-                (user_id, category, amount, period_code, start_date)
+                'INSERT INTO budgets (user_id, category, amount, period, start_date, user_name) VALUES (%s, %s, %s, %s, %s, %s)',
+                (user_id, category, amount, period_code, start_date, user_name)
             )
-            logger.info(f"Budget created: user_id={user_id}, category={category}, period={period_code}")
+            logger.info(f"Family budget created by {user_name}: category={category}, period={period_code}")
 
         conn.commit()
     except Exception as e:
@@ -263,15 +267,14 @@ def set_budget(user_id: int, category: str, amount: float, period: str) -> None:
         conn.close()
 
 
-def get_budgets(user_id: int) -> List[Dict]:
-    """Get all budgets for a user"""
+def get_budgets(user_id: int = None) -> List[Dict]:
+    """Get all budgets for entire family (user_id kept for backward compatibility)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            'SELECT category, amount, period FROM budgets WHERE user_id = %s',
-            (user_id,)
+            'SELECT category, amount, period FROM budgets ORDER BY category'
         )
         results = cursor.fetchall()
         return results
@@ -283,7 +286,7 @@ def get_budgets(user_id: int) -> List[Dict]:
 
 
 def check_budget_status(user_id: int, category: str, period: str) -> Tuple[Optional[float], float, float]:
-    """Check budget status for a category and period"""
+    """Check budget status for a category and period (checks against entire family spending)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -301,20 +304,20 @@ def check_budget_status(user_id: int, category: str, period: str) -> Tuple[Optio
         start_date = today.strftime('%Y-%m-%d')
 
     try:
-        # Получаем бюджет для данной категории
+        # Получаем бюджет для данной категории (общий для семьи)
         cursor.execute(
-            'SELECT amount FROM budgets WHERE user_id = %s AND category = %s AND period = %s',
-            (user_id, category, period_code)
+            'SELECT amount FROM budgets WHERE category = %s AND period = %s LIMIT 1',
+            (category, period_code)
         )
         budget = cursor.fetchone()
 
         if not budget:
             return None, 0, 0
 
-        # Считаем расходы по категории за период
+        # Считаем расходы по категории за период (для всей семьи)
         cursor.execute(
-            'SELECT SUM(amount) as spent FROM expenses WHERE user_id = %s AND category = %s AND date >= %s',
-            (user_id, category, start_date)
+            'SELECT SUM(amount) as spent FROM expenses WHERE category = %s AND date >= %s AND transaction_type = \'expense\'',
+            (category, start_date)
         )
         spent_row = cursor.fetchone()
         spent = float(spent_row['spent']) if spent_row and spent_row['spent'] else 0
@@ -353,19 +356,24 @@ def check_budget_alerts(user_id: int, category: str, amount: float) -> List[Dict
 # ========== SAVINGS GOAL OPERATIONS ==========
 
 def add_savings_goal(user_id: int, description: str, target_amount: float, target_date: Optional[str] = None) -> None:
-    """Add a new savings goal"""
+    """Add a new savings goal (family-wide goal)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     created_date = datetime.now().strftime('%Y-%m-%d')
 
     try:
+        # Получаем имя пользователя для аудита
+        cursor.execute('SELECT user_name FROM users WHERE user_id = %s', (user_id,))
+        result = cursor.fetchone()
+        user_name = result['user_name'] if result else "Пользователь"
+
         cursor.execute(
-            'INSERT INTO savings_goals (user_id, description, target_amount, target_date, created_date) VALUES (%s, %s, %s, %s, %s)',
-            (user_id, description, target_amount, target_date, created_date)
+            'INSERT INTO savings_goals (user_id, description, target_amount, target_date, created_date, user_name) VALUES (%s, %s, %s, %s, %s, %s)',
+            (user_id, description, target_amount, target_date, created_date, user_name)
         )
 
         conn.commit()
-        logger.info(f"Savings goal added: user_id={user_id}, description={description}")
+        logger.info(f"Family savings goal added by {user_name}: description={description}")
     except Exception as e:
         conn.rollback()
         logger.error(f"Error adding savings goal: {e}")
@@ -374,15 +382,14 @@ def add_savings_goal(user_id: int, description: str, target_amount: float, targe
         conn.close()
 
 
-def get_savings_goals(user_id: int) -> List[Dict]:
-    """Get all savings goals for a user"""
+def get_savings_goals(user_id: int = None) -> List[Dict]:
+    """Get all savings goals for entire family (user_id kept for backward compatibility)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            'SELECT id, description, target_amount, current_amount, target_date FROM savings_goals WHERE user_id = %s',
-            (user_id,)
+            'SELECT id, description, target_amount, current_amount, target_date FROM savings_goals ORDER BY created_date DESC'
         )
         results = cursor.fetchall()
         return results
@@ -394,19 +401,19 @@ def get_savings_goals(user_id: int) -> List[Dict]:
 
 
 def update_savings_progress(user_id: int, goal_id: int, amount: float) -> None:
-    """Update progress on a savings goal"""
+    """Update progress on a savings goal (family-wide goals)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        # Обновляем текущую сумму цели
+        # Обновляем текущую сумму цели (без проверки user_id - общая для семьи)
         cursor.execute(
-            'UPDATE savings_goals SET current_amount = current_amount + %s WHERE id = %s AND user_id = %s',
-            (amount, goal_id, user_id)
+            'UPDATE savings_goals SET current_amount = current_amount + %s WHERE id = %s',
+            (amount, goal_id)
         )
 
         conn.commit()
-        logger.info(f"Savings goal updated: goal_id={goal_id}, amount={amount}")
+        logger.info(f"Savings goal updated: goal_id={goal_id}, amount={amount} (by user_id={user_id})")
     except Exception as e:
         conn.rollback()
         logger.error(f"Error updating savings goal: {e}")

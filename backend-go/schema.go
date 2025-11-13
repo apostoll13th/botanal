@@ -107,6 +107,30 @@ func createBaseTables(database *sql.DB) error {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
 		`,
+		`
+		CREATE TABLE IF NOT EXISTS memos (
+			id SERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			title TEXT NOT NULL DEFAULT 'Без названия',
+			content TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS wishlist (
+			id SERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT,
+			url TEXT,
+			image_url TEXT,
+			priority INTEGER DEFAULT 0,
+			is_completed BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+		`,
 	}
 
 	for _, stmt := range statements {

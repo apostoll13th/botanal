@@ -235,22 +235,22 @@ def create_expense_handler():
 async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /daily_report command"""
     user_id = update.effective_user.id
-    expenses, total = get_daily_expenses(user_id)
+    expenses, total = get_daily_expenses()  # Теперь без user_id - показывает всю семью
 
-    report = format_expense_report(expenses, total, "сегодня")
+    report = format_expense_report(expenses, total, "сегодня (вся семья)")
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
 
 async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /weekly_report command"""
     user_id = update.effective_user.id
-    expenses, total = get_weekly_expenses(user_id)
+    expenses, total = get_weekly_expenses()  # Теперь без user_id - показывает всю семью
 
     if not expenses:
         await update.message.reply_text('За последнюю неделю нет расходов.', reply_markup=get_main_keyboard())
         return
 
-    report = "Расходы за последние 7 дней:\n\n"
+    report = "Расходы семьи за последние 7 дней:\n\n"
     for expense in expenses:
         total_value = float(expense['total']) if expense['total'] else 0
         report += f"{expense['date']}: {total_value:.2f} руб.\n"
@@ -262,13 +262,13 @@ async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /monthly_report command"""
     user_id = update.effective_user.id
-    expenses, total = get_monthly_expenses(user_id)
+    expenses, total = get_monthly_expenses()  # Теперь без user_id - показывает всю семью
 
     if not expenses:
         await update.message.reply_text('За последний месяц нет расходов.', reply_markup=get_main_keyboard())
         return
 
-    report = "Расходы за последние 30 дней:\n\n"
+    report = "Расходы семьи за последние 30 дней:\n\n"
     for expense in expenses:
         total_value = float(expense['total']) if expense['total'] else 0
         report += f"{expense['category']}: {total_value:.2f} руб.\n"
@@ -276,8 +276,8 @@ async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     report += f"\nОбщая сумма за месяц: {total:.2f} руб."
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
-    # Отправляем график расходов
-    chart = create_monthly_chart(user_id)
+    # Отправляем график расходов (теперь для всей семьи)
+    chart = create_monthly_chart(None)  # Передаем None чтобы показать всю семью
     if chart:
         await update.message.reply_photo(chart, reply_markup=get_main_keyboard())
 
@@ -361,9 +361,9 @@ async def save_budget(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def show_budgets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /my_budgets command"""
     user_id = update.effective_user.id
-    budgets = get_budgets(user_id)
+    budgets = get_budgets()  # Теперь без user_id - показывает общие семейные бюджеты
 
-    report = format_budget_report(budgets, user_id)
+    report = format_budget_report(budgets, None)  # Передаем None для семейного режима
     await update.message.reply_text(report, reply_markup=get_main_keyboard())
 
 
@@ -409,10 +409,10 @@ async def savings_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def show_savings_goals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /savings_goals command"""
     user_id = update.effective_user.id
-    goals = get_savings_goals(user_id)
+    goals = get_savings_goals()  # Теперь без user_id - показывает общие семейные цели
 
     if not goals:
-        await update.message.reply_text('У вас пока нет целей экономии.', reply_markup=get_main_keyboard())
+        await update.message.reply_text('Пока нет целей экономии.', reply_markup=get_main_keyboard())
         return
 
     report = format_savings_goals_report(goals)
@@ -532,12 +532,12 @@ async def show_recent_expenses(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if not expenses:
         await update.message.reply_text(
-            'У вас пока нет операций для удаления.',
+            'Пока нет операций для удаления.',
             reply_markup=get_main_keyboard()
         )
         return
 
-    message = "📝 Ваши последние операции:\n\n"
+    message = "📝 Последние операции семьи:\n\n"
     keyboard = []
 
     for expense in expenses:
@@ -546,9 +546,10 @@ async def show_recent_expenses(update: Update, context: ContextTypes.DEFAULT_TYP
         category = expense['category']
         date = expense['date']
         tx_type = expense.get('transaction_type', 'expense')
+        user_name = expense.get('user_name', 'Неизвестно')
         type_label = '💰 Доход' if tx_type == 'income' else '💸 Расход'
 
-        message += f"{type_label}: {amount:.2f} руб. • {category} • {date}\n"
+        message += f"{type_label}: {amount:.2f} руб. • {category} • {date} • ({user_name})\n"
 
         keyboard.append([InlineKeyboardButton(
             f"🗑️ Удалить: {amount:.2f} ₽ ({category})",

@@ -13,6 +13,9 @@ import Budgets from './components/Budgets';
 import Goals from './components/Goals';
 import Categories from './components/Categories';
 import Users from './components/Users';
+import Memos from './components/Memos';
+import Wishlist from './components/Wishlist';
+import ThemeToggle from './components/ThemeToggle';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -120,6 +123,10 @@ function App() {
         return <Goals />;
       case 'categories':
         return <Categories />;
+      case 'memos':
+        return <Memos />;
+      case 'wishlist':
+        return <Wishlist />;
       case 'users':
         return <Users currentUser={authUser} />;
       default:
@@ -135,20 +142,25 @@ function App() {
   return (
     <div className="App">
       <header className="header">
-        <h1>Финансовая аналитика</h1>
-        {authToken && (
-          <div className="user-info">
-            <div className="user-meta">
-              <div className="user-details">
-                <span className="user-name">{displayName}</span>
-                {authUser && <span className="user-role">{authUser.role}</span>}
+        <div className="flex items-center justify-between w-full">
+          <h1>Финансовая аналитика</h1>
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            {authToken && (
+              <div className="user-info">
+                <div className="user-meta">
+                  <div className="user-details">
+                    <span className="user-name">{displayName}</span>
+                    {authUser && <span className="user-role">{authUser.role}</span>}
+                  </div>
+                  <button className="logout-btn" onClick={handleLogout}>
+                    Выйти
+                  </button>
+                </div>
               </div>
-              <button className="logout-btn" onClick={handleLogout}>
-                Выйти
-              </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </header>
 
       {authToken && (
@@ -182,6 +194,18 @@ function App() {
             onClick={() => setActiveTab('categories')}
           >
             Категории
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'memos' ? 'active' : ''}`}
+            onClick={() => setActiveTab('memos')}
+          >
+            Мемосы
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'wishlist' ? 'active' : ''}`}
+            onClick={() => setActiveTab('wishlist')}
+          >
+            Список желаний
           </button>
           {authUser && authUser.role === 'admin' && (
             <button
