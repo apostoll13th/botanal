@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.familybudget"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.familybudget"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -43,7 +43,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.4"
+        kotlinCompilerExtensionVersion = "1.5.15"
     }
 
     packaging {
@@ -54,8 +54,8 @@ android {
 }
 
 dependencies {
-    // Compose BOM (Bill of Materials)
-    implementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    // Compose BOM (Bill of Materials) - Updated to latest
+    implementation(platform("androidx.compose:compose-bom:2025.10.01"))
 
     // Compose Core
     implementation("androidx.compose.ui:ui")
@@ -64,23 +64,24 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Compose Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.6")
+    // Compose Navigation - Updated
+    implementation("androidx.navigation:navigation-compose:2.8.6")
 
-    // ViewModel
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    // ViewModel - Updated
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
 
-    // Retrofit для API
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    // Retrofit 3.0 для API - Updated
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // Coil для загрузки изображений
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    // Coil 3 для загрузки изображений - Updated
+    implementation("io.coil-kt.coil3:coil-compose:3.3.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
 
-    // DataStore для хранения настроек
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    // DataStore для хранения настроек - Updated
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // Accompanist для системных UI
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
@@ -88,10 +89,10 @@ dependencies {
     // Charts библиотека
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 
-    // Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.8.2")
+    // Core - Updated
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
+    implementation("androidx.activity:activity-compose:1.10.0")
 
     // Debugging
     debugImplementation("androidx.compose.ui:ui-tooling")
