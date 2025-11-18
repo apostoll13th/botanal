@@ -22,10 +22,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.familybudget.models.Expense
 import com.familybudget.ui.components.AnimatedGradientCard
 import com.familybudget.ui.components.GlassmorphicCard
+import com.familybudget.ui.components.TransactionItem
+import com.familybudget.ui.components.formatCurrency
 import com.familybudget.ui.theme.*
 import com.familybudget.viewmodels.OverviewViewModel
-import java.text.NumberFormat
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -236,65 +236,3 @@ fun SummaryCard(
     }
 }
 
-@Composable
-fun TransactionItem(expense: Expense) {
-    val isExpense = expense.transactionType == "expense"
-
-    GlassmorphicCard(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isExpense) ErrorRed.copy(alpha = 0.15f)
-                            else SuccessGreen.copy(alpha = 0.15f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isExpense) Icons.Filled.RemoveCircle
-                                     else Icons.Filled.AddCircle,
-                        contentDescription = null,
-                        tint = if (isExpense) ErrorRed else SuccessGreen
-                    )
-                }
-                Column {
-                    Text(
-                        text = expense.description ?: expense.category,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "${expense.category} • ${expense.date}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Text(
-                text = if (isExpense) "-${formatCurrency(expense.amount)}"
-                       else "+${formatCurrency(expense.amount)}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (isExpense) ErrorRed else SuccessGreen
-            )
-        }
-    }
-}
-
-private fun formatCurrency(amount: Double): String {
-    val format = NumberFormat.getCurrencyInstance(Locale("ru", "RU"))
-    format.maximumFractionDigits = 0
-    return format.format(amount).replace("RUB", "₽")
-}

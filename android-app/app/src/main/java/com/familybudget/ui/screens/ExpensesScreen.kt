@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.familybudget.ui.components.GradientCard
+import com.familybudget.ui.components.SimpleTransactionItem
 import com.familybudget.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +67,7 @@ fun ExpensesScreen() {
             }
 
             items(10) { index ->
-                TransactionItem(
+                SimpleTransactionItem(
                     title = "Операция ${index + 1}",
                     category = if (index % 3 == 0) "Продукты" else "Развлечения",
                     amount = "${(500 + index * 250)} ₽",
