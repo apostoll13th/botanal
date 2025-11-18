@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Семейный Бюджет</string>
+
+    <!-- Navigation -->
+    <string name="nav_overview">Обзор</string>
+    <string name="nav_expenses">Операции</string>
+    <string name="nav_budgets">Бюджеты</string>
+    <string name="nav_memos">Мемосы</string>
+    <string name="nav_wishlist">Желания</string>
+
+    <!-- Overview Screen -->
+    <string name="welcome">Добро пожаловать!</string>
+    <string name="income">Доходы</string>
+    <string name="expenses">Расходы</string>
+    <string name="balance">Баланс</string>
+    <string name="recent_transactions">Последние операции</string>
+
+    <!-- Actions -->
+    <string name="add">Добавить</string>
+    <string name="edit">Редактировать</string>
+    <string name="delete">Удалить</string>
+    <string name="save">Сохранить</string>
+    <string name="cancel">Отмена</string>
+    <string name="done">Готово</string>
+
+    <!-- Common -->
+    <string name="loading">Загрузка...</string>
+    <string name="error">Ошибка</string>
+    <string name="retry">Повторить</string>
+</resources>
